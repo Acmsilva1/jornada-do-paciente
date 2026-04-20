@@ -1,0 +1,287 @@
+import Fastify from 'fastify';
+import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
+import fs from 'fs';
+import path from 'path';
+import { parse } from 'csv-parse';
+
+const fastify = Fastify({ logger: true });
+
+fastify.register(cors);
+fastify.register(websocket);
+
+const DADOS_DIR = path.resolve('../dados');
+
+// Estruturas de dados em RAM
+let globalAttendances: any[] = [];
+let labData = new Map<string, any[]>();
+let medData = new Map<string, any[]>();
+let viasData = new Map<string, string[]>();
+let imagingData = new Map<string, any[]>(); // RX, ECG, TC, US
+let revalData = new Map<string, any[]>();
+
+const loadCSV = (filename: string): Promise<any[]> => {
+  return new Promise((resolve, reject) => {
+    const results: any[] = [];
+    const filePath = path.join(DADOS_DIR, filename);
+    if (!fs.existsSync(filePath)) {
+      fastify.log.warn(`Arquivo não encontrado: ${filename}`);
+      return resolve([]);
+    }
+    fs.createReadStream(filePath)
+      .pipe(parse({ columns: true, skip_empty_lines: true, cast: false }))
+      .on('data', (row) => results.push(row))
+      .on('error', reject)
+      .on('end', () => resolve(results));
+  });
+};
+
+const start = async () => {
+  try {
+    fastify.log.info('Iniciando carga de dados massiva...');
+    
+    // 1. Carga do Principal
+    globalAttendances = await loadCSV('tbl_tempos_entrada_consulta_saida.csv');
+    fastify.log.info(`${globalAttendances.length} atendimentos principais carregados.`);
+
+    // 2. Carga dos auxiliares
+    const labs = await loadCSV('tbl_tempos_laboratorio.csv');
+    labs.forEach(l => {
+      const list = labData.get(String(l.NR_ATENDIMENTO)) || [];
+      list.push(l);
+      labData.set(String(l.NR_ATENDIMENTO), list);
+    });
+
+    const meds = await loadCSV('tbl_tempos_medicacao.csv');
+    meds.forEach(m => {
+      const list = medData.get(String(m.NR_ATENDIMENTO)) || [];
+      list.push(m);
+      medData.set(String(m.NR_ATENDIMENTO), list);
+    });
+
+    fastify.log.info('Lendo Vias de Medicamentos (76MB)... isso pode levar uns segundos');
+    const vias = await loadCSV('tbl_vias_medicamentos.csv');
+    vias.forEach(v => {
+      if (v.DS_MATERIAL) {
+        const list = viasData.get(String(v.NR_ATENDIMENTO)) || [];
+        if (!list.includes(v.DS_MATERIAL)) {
+          list.push(v.DS_MATERIAL);
+        }
+        viasData.set(String(v.NR_ATENDIMENTO), list);
+      }
+    });
+
+    const rx = await loadCSV('tbl_tempos_rx_e_ecg.csv');
+    const tc = await loadCSV('tbl_tempos_tc_e_us.csv');
+    [...rx, ...tc].forEach(i => {
+      const list = imagingData.get(String(i.NR_ATENDIMENTO)) || [];
+      list.push(i);
+      imagingData.set(String(i.NR_ATENDIMENTO), list);
+    });
+
+    const revals = await loadCSV('tbl_tempos_reavaliacao.csv');
+    revals.forEach(r => {
+      const list = revalData.get(String(r.NR_ATENDIMENTO)) || [];
+      list.push(r);
+      revalData.set(String(r.NR_ATENDIMENTO), list);
+    });
+
+    fastify.log.info('Carga de dados concluída.');
+
+    await fastify.listen({ port: 3001, host: '0.0.0.0' });
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+// --- ENDPOINTS ---
+
+// Unidades únicas
+fastify.get('/api/units', async () => {
+  return [...new Set(globalAttendances.map(a => a.UNIDADE).filter(Boolean))].sort();
+});
+
+// Pacientes por unidade
+fastify.get<{ Querystring: { unit?: string } }>('/api/patients', async (request, reply) => {
+  const { unit } = request.query;
+  if (!unit) return reply.status(400).send({ error: 'unit obrigatório' });
+
+  const filtered = globalAttendances.filter(a => a.UNIDADE === unit);
+  const byPatient = new Map<string, any>();
+  for (const a of filtered) {
+    const key = String(a.CD_PESSOA_FISICA);
+    const existing = byPatient.get(key);
+    if (!existing || new Date(a.DT_ENTRADA) > new Date(existing.DT_ENTRADA)) {
+      byPatient.set(key, a);
+    }
+  }
+
+  return [...byPatient.values()]
+    .filter(a => a.NR_ATENDIMENTO && String(a.NR_ATENDIMENTO).trim() !== '')
+    .sort((a, b) => new Date(b.DT_ENTRADA).getTime() - new Date(a.DT_ENTRADA).getTime())
+    .slice(0, 200)
+    .map(a => ({
+      NR_ATENDIMENTO: String(a.NR_ATENDIMENTO),
+      PACIENTE: a.PACIENTE,
+      IDADE: a.IDADE,
+      SEXO: a.SEXO,
+      PRIORIDADE: a.PRIORIDADE,
+      DT_ENTRADA: a.DT_ENTRADA,
+      CD_PESSOA_FISICA: String(a.CD_PESSOA_FISICA),
+    }));
+});
+
+// Detalhe da Jornada - O CORAÇÃO DO MAPA DO MAROTO
+// Usando * em vez de :id para garantir que caracteres especiais não quebrem o router do Fastify
+fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply) => {
+  const idStr = request.params['*'];
+  if (!idStr) return reply.status(400).send({ error: 'ID vazio' });
+  
+  const searchId = decodeURIComponent(idStr).trim();
+  const id = searchId; // Restaura a variável id para que as buscas mapeadas funcionem
+  const match = globalAttendances.find(a => String(a.NR_ATENDIMENTO).trim() === searchId);
+  if (!match) return reply.status(404).send({ error: `Atendimento [${searchId}] não encontrado` });
+
+  const steps: any[] = [];
+  const toMin = (val: any) => (val && !isNaN(Number(val)) ? Number(val) : null);
+
+  // 1. Fluxo Base (ZONA INICIAL)
+  steps.push({ type: 'FLOW', step: 'ENTRADA', label: 'Chegada / Senha', time: match.DT_ENTRADA, endTime: match.DT_TRIAGEM, minutes: 0 });
+  
+  if (match.DT_TRIAGEM) {
+    steps.push({ type: 'FLOW', step: 'TRIAGEM', label: 'Triagem', time: match.DT_TRIAGEM, endTime: match.DT_FIM_TRIAGEM, minutes: toMin(match.MIN_ENTRADA_X_TRIAGEM) });
+  }
+  if (match.DT_ATEND_MEDICO) {
+    steps.push({ type: 'FLOW', step: 'CONSULTA', label: 'Consulta Médica', time: match.DT_ATEND_MEDICO, endTime: match.DT_DESFECHO, minutes: toMin(match.MIN_ENTRADA_X_CONSULTA) });
+  }
+
+  // 2. Ramificações (ZONA DE AÇÃO)
+  const labs = labData.get(id) || [];
+  if (labs.length > 0) {
+    const sorted = labs.sort((a, b) => new Date(a.DT_SOLICITACAO).getTime() - new Date(b.DT_SOLICITACAO).getTime());
+    const sortedExames = labs.map(l => l).sort((a, b) => new Date(a.DT_EXAME).getTime() - new Date(b.DT_EXAME).getTime());
+    steps.push({ 
+      type: 'ACTION', 
+      step: 'LABORATORIO', 
+      label: 'Laboratório', 
+      time: sorted[0].DT_SOLICITACAO, 
+      endTime: sortedExames[sortedExames.length - 1].DT_EXAME,
+      count: labs.length, 
+      detail: labs.map(l => ({ name: l.DS_PROC_EXAME, time: l.DT_SOLICITACAO, status: 'Coletado' }))
+    });
+  }
+
+  const images = imagingData.get(id) || [];
+  if (images.length > 0) {
+    const sorted = images.sort((a, b) => new Date(a.DT_SOLICITACAO).getTime() - new Date(b.DT_SOLICITACAO).getTime());
+    const sortedExames = images.map(i => i).sort((a, b) => new Date(a.DT_EXAME).getTime() - new Date(b.DT_EXAME).getTime());
+    steps.push({ 
+      type: 'ACTION', 
+      step: 'IMAGEM', 
+      label: 'RX / TC / US', 
+      time: sorted[0].DT_SOLICITACAO, 
+      endTime: sortedExames[sortedExames.length - 1].DT_EXAME,
+      count: images.length, 
+      detail: images.map(i => ({ name: i.EXAME, time: i.DT_SOLICITACAO, status: i.STATUS || 'Realizado' }))
+    });
+  }
+
+  const meds = medData.get(id) || [];
+  if (meds.length > 0) {
+    const sorted = meds.sort((a, b) => new Date(a.DT_PRESCRICAO).getTime() - new Date(b.DT_PRESCRICAO).getTime());
+    const sortedAdmin = meds.map(m => m).sort((a, b) => new Date(a.DT_ADMINISTRACAO).getTime() - new Date(b.DT_ADMINISTRACAO).getTime());
+    const materials = viasData.get(id) || [];
+    
+    steps.push({ 
+      type: 'ACTION', 
+      step: 'MEDICACAO', 
+      label: 'Medicação', 
+      time: sorted[0].DT_PRESCRICAO, 
+      endTime: sortedAdmin[sortedAdmin.length - 1].DT_ADMINISTRACAO,
+      count: meds.length, 
+      detail: sorted.map((m, idx) => {
+        const name = materials[idx] || materials[0] || 'Medicamento Administrado';
+        return { name, time: m.DT_ADMINISTRACAO, status: 'Checado' };
+      })
+    });
+  }
+
+  // 3. Fechamento (ZONA DE FINALIZAÇÃO)
+  const revals = revalData.get(id) || [];
+  if (revals.length > 0) {
+    const sorted = revals.sort((a, b) => new Date(a.DT_SOLIC_REAVALIACAO).getTime() - new Date(b.DT_SOLIC_REAVALIACAO).getTime());
+    steps.push({ 
+      type: 'FLOW', 
+      step: 'REAVALIACAO', 
+      label: 'Reavaliação', 
+      time: sorted[0].DT_SOLIC_REAVALIACAO, 
+      count: revals.length,
+      detail: revals.map(r => ({ name: `Reavaliação por ${r.MEDICO || 'Médico'}`, time: r.DT_SOLIC_REAVALIACAO }))
+    });
+  }
+
+  if (match.DT_DESFECHO) {
+    const isIntern = match.DESFECHO?.toLowerCase().includes('intern') || match.DS_TIPO_ALTA?.toLowerCase().includes('intern');
+    steps.push({ 
+      type: 'OUTCOME', 
+      step: isIntern ? 'INTERNACAO' : 'ALTA', 
+      label: isIntern ? 'Internação' : 'Alta Médica', 
+      time: match.DT_DESFECHO, 
+      endTime: match.DT_ALTA,
+      minutes: toMin(match.MIN_ENTRADA_X_ALTA),
+      detail: match.DESFECHO
+    });
+  }
+
+  return {
+    ...match,
+    steps: steps.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime())
+  };
+});
+
+// Endpoint de Métricas Gerenciais
+fastify.get('/api/gerencia/metrics', async (request, reply) => {
+  const units = [...new Set(globalAttendances.map(a => a.UNIDADE).filter(Boolean))];
+  
+  const metrics = units.map(u => {
+    const unitData = globalAttendances.filter(a => a.UNIDADE === u);
+    const total = unitData.length;
+    const altas = unitData.filter(a => !a.DESFECHO?.toLowerCase().includes('intern')).length;
+    const interns = total - altas;
+    
+    const avgTime = unitData.reduce((acc, a) => acc + (Number(a.MIN_ENTRADA_X_ALTA) || 0), 0) / (total || 1);
+
+    return {
+      unidade: u,
+      total,
+      altas,
+      interns,
+      avgTime: Math.round(avgTime),
+      taxaConversao: Math.round((interns / (total || 1)) * 100)
+    };
+  });
+
+  return metrics;
+});
+
+// WebSocket Journey
+fastify.register(async function (fastify) {
+  fastify.get('/ws/journey/:id', { websocket: true }, (socket, req) => {
+    const urlParts = req.url.split('/');
+    const id = urlParts[urlParts.length - 1];
+    
+    // Simplificado para fins de demonstração visual
+    let step = 0;
+    const interval = setInterval(() => {
+      // O frontend agora usa o polling da jornada completa, mas o WS pode triggerar animações
+      socket.send(JSON.stringify({ type: 'TICK', step }));
+      step++;
+      if (step > 10) clearInterval(interval);
+    }, 2000);
+
+    socket.on('close', () => clearInterval(interval));
+  });
+});
+
+start();

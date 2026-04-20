@@ -1,0 +1,171 @@
+# Especificações Técnicas: CSS Global e Pipeline Adaptativo
+
+Esta documentação detalha a arquitetura de estilos que permite que as aplicações do sistema se ajustem automaticamente, utilizando variáveis CSS, o espaço de cor OKLCH e técnicas de escalonamento dinâmico.
+
+## Implementação no projeto (referência)
+
+| Peça | Caminho no repositório |
+| :--- | :--- |
+| Tokens, temas, animações pipeline | `FRONTEND/src/index.css` |
+| Registro Tailwind (`app.*`, `pipeline.*`, `table.*`, keyframes) | `FRONTEND/tailwind.config.js` |
+| Estado de tema no `<html>` + persistência | `FRONTEND/src/context/ThemeContext.jsx` |
+| Seletor de tema (rótulos curtos: Escuro, Claro, Verde, Azul + emoji) | `FRONTEND/src/components/ThemeSwitcher.jsx` |
+| Entrada React | `FRONTEND/src/main.jsx` (ThemeProvider) |
+| Gráficos ECharts + painel padrão | `FRONTEND/src/graficos/EchartsCanvas.jsx`, `ChartPanel.jsx`, `chartDefaults.js` |
+| Cores de eixo/tooltip por tema | `FRONTEND/src/utils/chartTheme.js` (`chartUi`) |
+| Biblioteca / sandbox de modelos | `FRONTEND/src/graficos/GraficosContainer.jsx`, `ChartRenderer.jsx`, `registry.js` |
+
+O `index.html` inicia com `class="h-full dark"` para evitar flash; o `ThemeProvider` reaplica a classe salva no `localStorage` (`hospital-bi-theme`).
+
+---
+
+## 1. Fundação: Design Tokens (OKLCH)
+
+O sistema utiliza variáveis no espaço de cor **OKLCH** (com fallbacks hex onde necessário), alinhado ao padrão descrito para **Tailwind 4**; neste projeto o build é **Tailwind 3** com as mesmas variáveis consumidas via `var(--*)` e classes `bg-app-*`, `text-app-*`, `pipeline-*`.
+
+### Variáveis Core (`:root` + temas)
+
+Definidas em `FRONTEND/src/index.css` em `:root`, `.dark`, `.light`, `.dark-green`, `.dark-blue`:
+
+- `--background`, `--foreground`, `--primary`, `--accent`
+- **Pipeline (dashboard):** `--dash-panel`, `--dash-live`, `--dash-critical`, `--dash-accent-urgent`
+- **App shell:** `--app-bg`, `--app-surface`, `--app-elevated`, `--app-border`, `--app-fg`, `--app-muted`
+- **Tabelas Gerência (por tema):** `--table-grid`, `--table-grid-strong`, `--table-row-sep`, `--table-thead-b`, `--table-total-sep`, `--table-header-from` / `--table-header-to`, `--table-head-inset`, `--table-subhead-bg`, `--table-header-fg`, `--table-header-muted`, `--table-zebra-odd` / `--table-zebra-even`, `--table-row-hover`, `--table-sticky-a|b|c`, `--table-total-bg`, `--table-footer-bg`, `--table-footer-b`, `--table-head-metric-bg`, `--table-cell-neutral`, `--table-nested-bg`
+- `--radius`, `--font-sans`, scrollbar tokens
+
+Classes utilitárias Tailwind (`tailwind.config.js`): `border-table-grid`, `bg-table-zebra-odd`, `text-table-header-fg`, etc.
+
+Componentes CSS: `.table-head-gradient`, `.table-subhead-row`, `.app-transition` (transições leves; encurtadas com `prefers-reduced-motion`), **`.gerencia-panel-head`** (faixa de título dos painéis Gerência: gradiente primary + teal, barra vertical `--dash-live` → `--primary`).
+
+### Por que isto funciona?
+
+Qualquer componente que use `var(--primary)` ou classes Tailwind mapeadas (`bg-app-bg`) atualiza quando a classe no `<html>` muda (`.dark` → `.light`, etc.).
+
+---
+
+## 2. Orquestração de Temas (Theming)
+
+O **`ThemeProvider`** (`FRONTEND/src/context/ThemeContext.jsx`) remove/adiciona no `document.documentElement` uma entre:
+
+| Tema | Classe HTML | Efeito principal |
+| :--- | :--- | :--- |
+| **Light** | `.light` | Fundo claro, painéis brancos/cinza claro. |
+| **Dark (Padrão)** | `.dark` | Base escura tipo BI atual (slate). |
+| **Dark Green** | `.dark-green` | Tons verdes (referência PS / comando). |
+| **Dark Blue** | `.dark-blue` | Azul marinho (referência Leitos). |
+
+Sobrescrita via blocos CSS no mesmo `index.css` (técnica da documentação original).
+
+---
+
+## 3. O Padrão "Pipeline" (Dashboard)
+
+Paleta fixa replicada em variáveis:
+
+* **Fundo do painel:** `#1e2030` → `--dash-panel` (ajustado no tema claro)
+* **Acento Live (Teal):** `#2DE0B9` → `--dash-live` (ex.: botão atualizar, loading dots, tema ativo)
+* **Acento Crítico (Red):** `#E02D5F` → `--dash-critical`
+* **Acento Urgente (Amber):** `#E0B92D` → `--dash-accent-urgent`
+
+Classe utilitária **`.dashboard-panel`** aplica fundo/borda alinhados ao pipeline nas tabelas Gerência (`MetasPorVolumesTable`, `MetricasPorUnidadeTable`, `TempoMedioEtapasTable`), com **sombra interna** suave derivada de `--primary` e ajustes por `.light`, `.dark-green`, `.dark-blue`.
+
+---
+
+## 3.1 Gráficos (ECharts) e `ChartPanel`
+
+| Peça | Função |
+| :--- | :--- |
+| **`EchartsCanvas`** | Wrapper `echarts-for-react`; recebe `option` já montada; `height`, `loading`, `onEvents`. |
+| **`ChartPanel`** | **Recipiente padrão do shell** (dashboard / Visão Gerência): `border-table-grid`, fundo **claro** (`bg-white shadow-sm`) ou **escuro** (`bg-slate-900/25 shadow-inner`) conforme `theme === 'light'`. **`variant="card"`** = `rounded-xl` + borda completa; **`variant="embedded"`** = só `border-t` sob `.gerencia-panel-head` dentro de `.dashboard-panel`. **`loading`**: overlay com `Loader2`. **Uso atual no código:** painéis da Visão Gerência (`MetasAcompanhamentoGestao`, `MetasConformesPorUnidadeChart`, `GraficosContainer` na biblioteca). |
+| **`chartUi(theme)`** | Tokens de texto, eixos, tooltip e legenda para options montadas à mão na Gerência e em **`gerenciaChartOptions.js`** (linha/barras/pizza a partir dos mesmos dados). |
+| **`chartDefaults.js`** | Modelos da biblioteca (`BarVerticalModel`, `LineModel`, …): grid, tooltip e eixos pensados para preview; integração no **tema claro** do shell: preferir `chartUi` na option ou envolver em `ChartPanel`. |
+| **`ChartRenderer`** | Renderiza o modelo por `chartId` com **apenas** um `<div>` + `<EchartsCanvas />` vindo do modelo — **não** inclui `ChartPanel`. Quem usar `ChartRenderer` num módulo com o mesmo look do dashboard deve envolver o resultado em **`ChartPanel`** + passar `theme` do `useTheme()`. |
+| **`graficos/models/*.jsx`** | Cada modelo exporta só **`EchartsCanvas`** — por desenho, para composição flexível. O **`GraficosContainer`** já aplica `ChartPanel` à volta do preview. |
+
+**Uso recomendado em novos módulos (páginas / shell):**
+
+```jsx
+import { useTheme } from '../context/ThemeContext';
+import { chartUi } from '../utils/chartTheme';
+import ChartPanel from '../graficos/ChartPanel';
+import EchartsCanvas from '../graficos/EchartsCanvas';
+
+const { theme } = useTheme();
+const ui = chartUi(theme);
+// … montar option com ui.fg, ui.splitLine, etc.
+
+<ChartPanel theme={theme} variant="card" minHeightClass="min-h-[360px]" loading={loading}>
+  <EchartsCanvas option={option} height={400} loading={false} />
+</ChartPanel>
+```
+
+**Exportação CSV (Visão Gerência):** disponível nas **tabelas** e totais (`ExportCsvButton` + `utils/downloadCsv.js`); **não** nos gráficos de tendência (decisão de produto: evitar CSV duplicado para séries já derivadas da API).
+
+**Tabelas no modo claro:** células condicionais em `MetasPorVolumesTable`, `TempoMedioEtapasTable` e `MetricasPorUnidadeTable` usam paleta pastel / texto escuro quando `theme === 'light'`, mantendo alto contraste nos temas escuros.
+
+---
+
+## 4. Adaptação Automática de Tela (Responsive Scale)
+
+### A. Tipografia fluida (`clamp`)
+
+Classe opcional no root quando necessário (wallboard):
+
+```css
+.multi-monitor-extended-view {
+  font-size: clamp(16px, 1.5vw, 24px) !important;
+}
+```
+
+### B. Variável de escala local (`--unit-card-scale`)
+
+Pode ser adicionada aos cards densos:
+
+```css
+.unit-card-typography {
+  font-size: calc(1rem * var(--unit-card-scale, 1));
+}
+```
+
+### C. Layout “clip”
+
+Em `index.css` (`@layer base`):
+
+- `html`: `max-width: 100vw`, `overflow-x: clip`
+- `#root`: `min-width: 0` (flex/grid encolhem corretamente)
+
+---
+
+## 5. Estados de interface (carregamento, erro, sucesso)
+
+| Estado | Implementação sugerida |
+| :--- | :--- |
+| **Carregamento** | `.state-loading-dot` (bounce + glow teal) no `SectionLoader` (`App.jsx`) |
+| **Erro API** | `.state-error-banner` nas tabelas (borda/cor crítica) |
+| **Transição de rota** | `.animate-fade-in-up` no shell principal |
+| **Crítico / Urgente (cards)** | `.card-critico`, `.card-urgente` (`index.css`) |
+
+---
+
+## 6. Acessibilidade: movimento reduzido
+
+Em `FRONTEND/src/index.css`, `@media (prefers-reduced-motion: reduce)` desliga animações decorativas (fade-in do shell, spin lento, foguinho/raio, glow, bounce/ping/pulse nos loaders) e encurta `.app-transition`, `.nav-item` e `.card-premium`. Em componentes, use `motion-reduce:*` (Tailwind 3.4) quando fizer sentido — ex.: `Sidebar` com `motion-reduce:transition-none` na largura colapsável.
+
+---
+
+## 7. Gadgets e Micro-Interações
+
+Classes e keyframes disponíveis em `index.css` e, para uso via Tailwind, em `tailwind.config.js`:
+
+- **`.anim-foguinho`**, **`.anim-raio`** — atenção sem fadiga
+- **`.anim-glow-pulse`**, **`.anim-preview-pulse`**
+- **`.animate-spin-slow`** — relógio / indicador contínuo
+
+---
+
+## 8. Como estender
+
+1. Novos tokens: edite `index.css` e, se precisar de utilitário Tailwind, `tailwind.config.js`.
+2. Novos temas: adicione classe no `<html>` + bloco em `index.css`; inclua o nome em `THEMES` em `ThemeContext.jsx` e botão em `ThemeSwitcher.jsx`.
+3. Preferir **cores semânticas** (`bg-app-surface`) em novos componentes em vez de `bg-slate-*` fixo, para respeitar todos os temas.
+4. **Novos gráficos no dashboard:** envolver `EchartsCanvas` em **`ChartPanel`** com o mesmo `theme` do `useTheme()`; reutilizar **`chartUi(theme)`** para tooltip/eixos; evitar fundos `slate-*` soltos no modo claro.
