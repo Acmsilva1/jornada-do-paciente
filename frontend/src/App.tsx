@@ -173,6 +173,13 @@ export default function App() {
 
   // Carrega jornada real + anima os passos ao selecionar paciente
   useEffect(() => {
+    if (!selectedPatient) { 
+      setJourney(null); 
+      setActiveStep(''); 
+      setLoadingJourney(false);
+      return; 
+    }
+    
     const isSamePatient = journey?.NR_ATENDIMENTO === selectedPatient.NR_ATENDIMENTO;
     
     if (!isSamePatient) {
