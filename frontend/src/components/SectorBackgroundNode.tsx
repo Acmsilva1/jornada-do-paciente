@@ -24,8 +24,9 @@ export default function SectorBackgroundNode({ data }: any) {
   const isFinished = hasStep && !isActive
   
   const timeStr = hasStep ? fmtTime(data.stepData.time) : null
+  const endTimeStr = hasStep && data.stepData.endTime ? fmtTime(data.stepData.endTime) : null
   const durationStr = hasStep ? fmtMin(data.stepData.minutes) : null
-  const minutes = Number(data.stepData?.minutes || 0)
+  const minutes = Math.round(Number(data.stepData?.minutes || 0))
   const slaLimit = Number(data.stepData?.slaLimit || 999)
   const slaAlert = Number(data.stepData?.slaAlert || 999)
   
@@ -38,7 +39,7 @@ export default function SectorBackgroundNode({ data }: any) {
     : isOverAlert 
       ? 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]' 
       : ''
-
+  
   return (
     <div
       className="relative"
@@ -46,28 +47,36 @@ export default function SectorBackgroundNode({ data }: any) {
       onMouseLeave={() => setHovered(false)}
       style={{ cursor: 'default' }}
     >
-      <Handle type="target" position={Position.Top} className="opacity-0 pointer-events-none" />
+      {/* Handles dinâmicos para roteamento inteligente */}
+      <Handle type="target" position={Position.Top} id="target-top" className="opacity-0 pointer-events-none" />
+      <Handle type="target" position={Position.Bottom} id="target-bottom" className="opacity-0 pointer-events-none" />
+      <Handle type="target" position={Position.Left} id="target-left" className="opacity-0 pointer-events-none" />
+      <Handle type="target" position={Position.Right} id="target-right" className="opacity-0 pointer-events-none" />
+      <Handle type="source" position={Position.Top} id="source-top" className="opacity-0 pointer-events-none" />
+      <Handle type="source" position={Position.Bottom} id="source-bottom" className="opacity-0 pointer-events-none" />
+      <Handle type="source" position={Position.Left} id="source-left" className="opacity-0 pointer-events-none" />
+      <Handle type="source" position={Position.Right} id="source-right" className="opacity-0 pointer-events-none" />
 
-      {/* Node Card - SURREAL VISUAL */}
+      {/* Node Card - FIXED GABARIT VISUAL */}
       <div className={`
-        px-4 py-6 rounded-[2rem] w-48 min-h-[140px] flex flex-col items-center justify-center
-        border transition-all duration-500 relative overflow-hidden backdrop-blur-md
+        px-2 py-3 rounded-2xl w-40 min-h-[125px] flex flex-col items-center justify-between pb-2 pt-6
+        border transition-all duration-500 relative backdrop-blur-md
         ${statusClass || (isActive
-          ? 'border-dash-live shadow-[0_0_30px_rgba(45,224,185,0.3)] bg-dash-live/10'
-          : isFinished
-            ? 'border-dash-live/40 bg-white/5 opacity-100 shadow-[0_0_15px_rgba(45,224,185,0.1)]'
-            : 'border-app-border bg-black/40 opacity-40 grayscale-[0.5]')
+            ? 'border-dash-live shadow-[0_0_30px_rgba(45,224,185,0.3)] bg-dash-live/10'
+            : isFinished
+              ? 'border-dash-live/30 bg-white/5 opacity-100 shadow-[0_0_15px_rgba(45,224,185,0.05)]'
+              : 'border-app-border bg-black/40 opacity-40 grayscale-[0.5]')
         }
         ${hovered && hasStep ? 'scale-105 -translate-y-2 !opacity-100' : ''}
       `}>
-        {/* SLA Badge */}
+        {/* SLA Badge - Compactado */}
         {isOverMeta && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[7px] font-black px-2 py-0.5 rounded-full z-20 animate-pulse">
-            Meta Gerência
+          <div className="absolute top-[-6px] left-1/2 -translate-x-1/2 bg-red-500 text-white text-[6px] font-black px-1.5 py-[1px] rounded-md z-20 animate-pulse shadow-sm whitespace-nowrap">
+            META GERÊNCIA
           </div>
         )}
         {isOverAlert && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-[7px] font-black px-2 py-0.5 rounded-full z-20">
+          <div className="absolute top-[-6px] left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-[6px] font-black px-1.5 py-[1px] rounded-md z-20 uppercase shadow-sm whitespace-nowrap">
             Meta Supervisão
           </div>
         )}
@@ -78,58 +87,117 @@ export default function SectorBackgroundNode({ data }: any) {
 
         {/* Finished Checkmark */}
         {isFinished && (
-          <div className="absolute top-3 right-3 text-dash-live drop-shadow-[0_0_5px_rgba(45,224,185,0.8)]">
+          <div className="absolute top-2 right-3 text-dash-live drop-shadow-[0_0_5px_rgba(45,224,185,0.8)]">
             <CheckCircle2 size={16} strokeWidth={3} />
           </div>
         )}
 
-        <div className="relative z-10 flex flex-col items-center gap-3">
+        <div className="relative z-10 flex flex-col items-center gap-2 mt-2">
           <div className={`
-            p-3 rounded-2xl transition-all duration-500
-            ${statusColor ? '' : isActive ? 'bg-dash-live text-[#0B0E14] shadow-[0_0_20px_var(--dash-live)]' : 'bg-black/20 text-[#3a3f58]'}
+            p-2 rounded-lg transition-all duration-500
+            ${statusColor ? '' : isActive ? 'bg-dash-live text-[#0B0E14] shadow-[0_0_10px_var(--dash-live)]' : 'bg-black/20 text-[#3a3f58]'}
             ${isFinished && !statusColor ? 'text-dash-live !bg-dash-live/10' : ''}
-          `} style={statusColor ? { backgroundColor: statusColor, color: '#000', boxShadow: `0 0 15px ${statusColor}` } : {}}>
-            {data.icon}
+          `} style={statusColor ? { backgroundColor: statusColor, color: '#000', boxShadow: `0 0 10px ${statusColor}` } : {}}>
+            <div className="relative">
+              {data.icon}
+              {/* Badge de Contagem (Exames/Medicamentos/Reaval) */}
+              {(data.stepData?.count || 0) > 0 && (
+                <div className="absolute -top-3 -right-3 bg-red-600 text-white text-[8px] font-black w-4 h-4 rounded-full flex items-center justify-center border-2 border-[#0B0E14] shadow-lg">
+                  {data.stepData.count}
+                </div>
+              )}
+            </div>
           </div>
           
-          <div className="flex flex-col items-center">
-            <span className={`text-[10px] font-black tracking-[0.2em] uppercase text-center transition-colors mb-1 ${
+          <div className="flex flex-col items-center w-full px-1">
+            <span className={`text-[9px] font-bold tracking-tight uppercase text-center transition-colors mb-0.5 ${
               isActive || isFinished ? 'text-white' : 'text-[#4B5263]'
             }`}>
               {data.label}
             </span>
+
+            {/* Sub-label de Detalhe (Insights) */}
+            {hasStep && (
+              <div className="flex flex-col items-center gap-0.5 mt-0.5 mb-1 min-h-[12px] h-auto px-1 w-full">
+                {data.stepData.step === 'CONSULTA' && data.stepData.detail && (
+                  <div className="flex flex-col items-center w-full px-0.5">
+                    {data.stepData.detail.specialty && (
+                      <span className="text-[8px] text-dash-live font-black uppercase tracking-tighter truncate w-full text-center">
+                        {data.stepData.detail.specialty}
+                      </span>
+                    )}
+                    {data.stepData.detail.doctor && (
+                      <div className="flex flex-col items-center mt-1 leading-[1]">
+                        <span className="text-[9px] text-yellow-500 font-black uppercase tracking-tight">
+                          DR. {data.stepData.detail.doctor.split(' ')[0]}
+                        </span>
+                        <span className="text-[8px] text-yellow-500/80 font-bold uppercase tracking-tighter truncate w-full text-center">
+                          {data.stepData.detail.doctor.split(' ').slice(1, 2).join(' ')}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 mt-1 justify-center w-full">
+                      {data.stepData.detail.cid && (
+                        <span className="text-[7px] bg-dash-live/20 px-2 py-0.5 rounded text-dash-live font-black border border-dash-live/30 truncate">
+                          CID: {data.stepData.detail.cid}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {data.stepData.step === 'TRIAGEM' && data.stepData.detail?.priority && (
+                  <span className="text-[7px] text-yellow-400/80 font-black uppercase tracking-tighter truncate w-full text-center">
+                    {data.stepData.detail.priority}
+                  </span>
+                )}
+                {(data.stepData.step === 'LABORATORIO' || data.stepData.step === 'IMAGEM' || data.stepData.step === 'MEDICACAO') && data.stepData.count > 0 && (
+                  <span className="text-[7px] text-app-muted font-bold lowercase tracking-tight italic">
+                    {data.stepData.count} item(s) solicita.
+                  </span>
+                )}
+              </div>
+            )}
             
             {/* Status Indicator */}
             <div className={`h-1 w-8 rounded-full transition-all duration-500 ${
               isActive ? 'bg-dash-live w-12' : isFinished ? 'bg-dash-live/40' : 'bg-transparent'
             }`} />
           </div>
-
-          {/* Time badge */}
-          {(isActive || isFinished) && timeStr && (
-            <div className={`
-              flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all
-              ${isActive ? 'bg-dash-live/20 border-dash-live/40' : 'bg-black/40 border-white/10'}
-            `}>
-              <div className="flex items-center gap-1">
-                <Clock size={10} className={isActive ? 'text-dash-live' : 'text-app-muted'} />
-                <span className={`text-[10px] font-mono font-bold ${isActive ? 'text-dash-live' : 'text-app-muted'}`}>
-                  {timeStr}
-                </span>
-              </div>
-              
-              {data.stepData?.type === 'OUTCOME' && minutes > 0 && (
-                <>
-                  <div className="w-[1px] h-3 bg-white/10 mx-0.5" />
-                  <div className="flex items-center gap-1">
-                    <span className="text-[9px] text-app-muted uppercase font-black tracking-tighter">Total</span>
-                    <span className="text-[10px] text-white font-bold">{minutes} min</span>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
         </div>
+
+        {/* Time badge - Isolamento da Lógica por Tipo de Nó */}
+        {(isActive || isFinished) && (
+          <>
+            {/* CASO A: Nó de Desfecho (ALTA/INTERNACAO) com Baixa no Sistema (Alta Visibilidade) */}
+            {data.stepData?.type === 'OUTCOME' && endTimeStr ? (
+              <div className="flex items-center gap-1.5 px-1.5 py-1.5 rounded-xl border-2 transition-all mt-1.5 bg-blue-600/25 border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)] w-full justify-center overflow-hidden">
+                <div className="flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded-lg border border-white/10 flex-1 justify-center">
+                  <span className="text-[7px] text-blue-300 uppercase font-black tracking-tighter">SAÍDA:</span>
+                  <span className="text-[10px] text-white font-black font-mono leading-none">{endTimeStr}</span>
+                </div>
+                <div className="flex items-center gap-1 bg-white/5 px-2 py-0.5 rounded-lg border border-white/10 flex-1 justify-center">
+                  <span className="text-[7px] text-app-muted uppercase font-black tracking-tighter">PERMAN:</span>
+                  <span className="text-[10px] text-white font-black leading-none">{Math.round(minutes)}m</span>
+                </div>
+              </div>
+            ) : (
+              /* CASO B: Todos os outros nós ou nó de Desfecho sem baixa ainda (Visual de Intervalo de Alta Visibilidade) */
+              timeStr && (
+                <div className={`
+                  flex flex-col items-center gap-0 px-3 py-1.5 rounded-xl border-2 transition-all mt-1.5 w-[95%]
+                  ${isActive ? 'bg-blue-600/25 border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.2)]' : 'bg-black/60 border-white/20'}
+                `}>
+                  <div className="flex items-center gap-1.5">
+                    <Clock size={12} className={isActive ? 'text-blue-300' : 'text-app-muted'} />
+                    <span className={`text-[10px] font-mono font-black tracking-tight ${isActive ? 'text-blue-200' : 'text-app-muted'}`}>
+                      {timeStr} — {endTimeStr || '...'}
+                    </span>
+                  </div>
+                </div>
+              )
+            )}
+          </>
+        )}
       </div>
 
       {/* Tooltip Surreal */}
@@ -192,51 +260,74 @@ export default function SectorBackgroundNode({ data }: any) {
                      </div>
                   )}
 
-                  {/* CONSULTA */}
+                  {/* CONSULTA MÉDICA */}
                   {stepKey === 'CONSULTA' && data.journey && (
-                     <div className="p-2.5 bg-white/[0.02] rounded-lg border border-white/5 space-y-2">
+                     <div className="p-2.5 bg-white/[0.02] rounded-lg border border-white/5 space-y-2 border-l-2 border-l-dash-live">
                        <div>
-                         <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block mb-0.5">Médico Responsável:</span>
-                         <span className="text-[11px] font-bold text-white truncate max-w-[180px] block" title={data.journey.MEDICO_ATENDIMENTO}>{data.journey.MEDICO_ATENDIMENTO || 'Não informado'}</span>
+                         <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block mb-0.5">Especialidade:</span>
+                         <span className="text-[11px] font-bold text-white uppercase">{data.journey.DS_ESPECIALID || 'Não Lançada'}</span>
                        </div>
-                       {(data.journey.CD_CID || data.journey.CID) && (
+                       {(data.journey.NOME_MEDICO || data.journey.MEDICO_ATENDIMENTO) && (
                          <div className="border-t border-white/5 pt-2">
-                           <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block mb-0.5">Diagnóstico (CID):</span>
-                           <span className="text-[10px] text-dash-live/90 font-medium leading-tight block">[{data.journey.CD_CID}] {data.journey.CID}</span>
+                           <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block mb-0.5">Médico Responsável:</span>
+                           <span className="text-[10px] text-white/90 font-medium truncate block max-w-[180px]">{data.journey.NOME_MEDICO || data.journey.MEDICO_ATENDIMENTO}</span>
                          </div>
                        )}
                      </div>
                   )}
 
-                  {/* APOIO DIAG E TERAPEUTICO */}
-                  {(stepKey === 'LABORATORIO' || stepKey === 'IMAGEM' || stepKey === 'MEDICACAO' || stepKey === 'REAVALIACAO') && (
-                     <>
-                       {Array.isArray(data.stepData?.detail) && data.stepData.detail.length > 0 ? (
-                         <div className="p-2 bg-white/[0.02] rounded-lg border border-white/5">
-                           <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block mb-1.5">
-                             {stepKey === 'MEDICACAO' ? 'Medicamentos Check:' : (stepKey === 'REAVALIACAO' ? 'Reavaliações:' : 'Exames Solicitados:')}
-                           </span>
-                           <div className="space-y-1.5">
-                             {data.stepData.detail.slice(0, 3).map((item: any, i: number) => (
-                               <div key={i} className="flex items-center justify-between gap-2 text-[10px]">
-                                 <span className="text-white/90 truncate max-w-[130px] font-medium" title={item.name}>• {item.name || item}</span>
-                                 {/* {item.time && <span className="text-dash-live/60 font-mono text-[9px] shrink-0">{fmtTime(item.time)}</span>}  -- removido horario de cada item para nao duplicar com o tempo do card */}
-                               </div>
-                             ))}
-                             {data.stepData.detail.length > 3 && (
-                               <div className="text-[9px] text-dash-live/80 font-bold pt-1 text-center border-t border-white/5 mt-1">
-                                 + {data.stepData.detail.length - 3} item(ns)
-                               </div>
-                             )}
+                  {/* EXAMES (LABORATORIO / IMAGEM) */}
+                  {(stepKey === 'LABORATORIO' || stepKey === 'IMAGEM') && data.stepData?.detail?.length > 0 && (
+                     <div className="space-y-2">
+                       <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block px-1">Exames Solicitados:</span>
+                       <div className="max-h-[110px] overflow-y-auto pr-1 custom-scrollbar space-y-1">
+                         {data.stepData.detail.map((ex: any, idx: number) => (
+                           <div key={idx} className="p-2 bg-white/5 rounded border border-white/5 flex items-center justify-between gap-3">
+                             <div className="flex flex-col">
+                               <span className="text-[9px] text-white/90 font-bold leading-tight">{ex.name}</span>
+                               <span className="text-[8px] text-dash-live/60 font-mono">{fmtTime(ex.time)}</span>
+                             </div>
+                             <span className="text-[7px] px-1 py-0.5 bg-dash-live/10 text-dash-live rounded font-black uppercase">OK</span>
                            </div>
-                         </div>
-                       ) : (
-                         <div className="text-[10px] text-white/30 italic p-2 bg-white/[0.01] border border-white/5 rounded-lg text-center">Nenhum registro...</div>
-                       )}
-                     </>
+                         ))}
+                       </div>
+                     </div>
                   )}
 
-                  {/* DESFECHO (ALTA/INTERNACAO) */}
+                  {/* MEDICACAO */}
+                  {stepKey === 'MEDICACAO' && data.stepData?.detail?.length > 0 && (
+                     <div className="space-y-2">
+                       <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block px-1">Prescrições Ativas:</span>
+                       <div className="max-h-[110px] overflow-y-auto pr-1 custom-scrollbar space-y-1">
+                         {data.stepData.detail.map((med: any, idx: number) => (
+                           <div key={idx} className="p-2 bg-white/5 rounded border border-white/5 flex items-center justify-between gap-3">
+                             <div className="flex flex-col">
+                               <span className="text-[9px] text-white/90 font-bold leading-tight line-clamp-1">{med.name}</span>
+                               <span className="text-[8px] text-app-muted font-mono">{fmtTime(med.time)}</span>
+                             </div>
+                             <div className="w-2 h-2 rounded-full bg-dash-live animate-pulse shadow-[0_0_5px_var(--dash-live)]" />
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                  )}
+
+                  {/* REAVALIACAO */}
+                  {stepKey === 'REAVALIACAO' && data.stepData?.detail?.length > 0 && (
+                     <div className="space-y-2">
+                       <span className="text-[8px] text-app-muted uppercase tracking-widest font-black block px-1">Histórico de Retornos:</span>
+                       <div className="space-y-1">
+                         {data.stepData.detail.map((rev: any, idx: number) => (
+                           <div key={idx} className="p-2 bg-yellow-500/5 rounded border border-yellow-500/20 flex items-center justify-between">
+                              <span className="text-[9px] text-white/90 font-bold">{rev.name}</span>
+                              <span className="text-[8px] text-yellow-400 font-mono">{fmtTime(rev.time)}</span>
+                           </div>
+                         ))}
+                       </div>
+                     </div>
+                  )}
+
+                  {/* ALTA / INTERNACAO */}
                   {(stepKey === 'ALTA' || stepKey === 'INTERNACAO') && data.journey && (
                      <div className="p-2.5 bg-white/[0.02] rounded-lg border border-white/5 space-y-2 border-l-2 border-l-dash-live">
                        <div>
@@ -259,7 +350,14 @@ export default function SectorBackgroundNode({ data }: any) {
                         <span className="text-[8px] text-app-muted uppercase tracking-widest font-black mb-0.5">Início:</span>
                         <span className="text-white font-mono font-bold text-[11px]">{timeStr || '--:--'}</span>
                       </div>
-                      {data.stepData?.endTime && (
+                      {(stepKey === 'ALTA' || stepKey === 'INTERNACAO') && data.journey?.steps?.length > 0 ? (
+                        <div className="flex flex-col text-right px-2 border-l border-white/5">
+                          <span className="text-[8px] text-dash-live/60 uppercase tracking-widest font-black mb-0.5">Permanência Total:</span>
+                          <span className="text-dash-live font-mono font-bold text-[11px]">
+                            {fmtMin((new Date(data.stepData.time).getTime() - new Date(data.journey.steps[0].time).getTime()) / 60000)}
+                          </span>
+                        </div>
+                      ) : data.stepData?.endTime && (
                         <div className="flex flex-col text-right px-2 border-l border-white/5">
                           <span className="text-[8px] text-dash-live/60 uppercase tracking-widest font-black mb-0.5">Fim:</span>
                           <span className="text-dash-live font-mono font-bold text-[11px]">{fmtTime(data.stepData.endTime)}</span>
@@ -277,7 +375,7 @@ export default function SectorBackgroundNode({ data }: any) {
                             </span>
                          </div>
                          <div className="flex items-baseline gap-1">
-                            <span className="text-xs font-bold text-white">{minutes} min</span>
+                            <span className="text-xs font-bold text-white">{Math.round(minutes)} min</span>
                             <span className="text-[9px] text-app-muted">de meta {data.stepData.slaLimit} min</span>
                          </div>
                       </div>
@@ -294,8 +392,6 @@ export default function SectorBackgroundNode({ data }: any) {
           )
         })()
       )}
-
-      <Handle type="source" position={Position.Bottom} className="opacity-0 pointer-events-none" />
     </div>
   )
 }

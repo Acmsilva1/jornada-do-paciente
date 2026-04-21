@@ -52,9 +52,15 @@ export default function StepDetailModal({ data, onClose }: { data: ModalData; on
   const allSteps: StepInfo[] = journey?.steps ?? []
   const stepIdx = allSteps.findIndex((s: StepInfo) => s.step === step.step)
   const nextStep = allSteps[stepIdx + 1]
+  const isFinalStep = step.step === 'ALTA' || step.step === 'INTERNACAO' || !nextStep
+
   let duration: number | null = null
   if (step.time && nextStep?.time) {
     duration = (new Date(nextStep.time).getTime() - new Date(step.time).getTime()) / 60000
+  } else if (step.time && isFinalStep && allSteps.length > 0) {
+    // Para o card final, calcula a permanência total desde a entrada
+    const firstStep = allSteps[0]
+    duration = (new Date(step.time).getTime() - new Date(firstStep.time).getTime()) / 60000
   }
 
   const detailList = Array.isArray(step.detail) ? step.detail : []
@@ -131,7 +137,9 @@ export default function StepDetailModal({ data, onClose }: { data: ModalData; on
                   <div className="flex items-center justify-between p-4 bg-dash-live/5 border border-dash-live/10 rounded-2xl">
                      <div className="flex items-center gap-3">
                         <Activity size={14} className="text-dash-live" />
-                        <span className="text-xs text-app-muted">Permanência</span>
+                        <span className="text-xs text-app-muted">
+                           {step.step === 'ALTA' || step.step === 'INTERNACAO' ? 'Permanência Total' : 'Permanência'}
+                        </span>
                      </div>
                      <span className="text-xs font-black text-dash-live">{fmtMin(duration)}</span>
                   </div>

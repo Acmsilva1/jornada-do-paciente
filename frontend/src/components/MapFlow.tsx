@@ -19,24 +19,28 @@ interface MapFlowProps {
 }
 
 const SECTOR_DEFINITIONS = [
-  { id: 'ENTRADA', label: 'PORTARIA / SENHA', icon: <span className="text-2xl">🏢</span>, position: { x: 50, y: 350 }, sourcePosition: 'right', targetPosition: 'left', zone: 'START' },
-  { id: 'TRIAGEM', label: 'CLASSIFICAÇÃO', icon: <span className="text-2xl animate-pulse">🩺</span>, position: { x: 350, y: 350 }, sourcePosition: 'right', targetPosition: 'left', zone: 'START' },
-  { id: 'CONSULTA', label: 'CONSULTÓRIO', icon: <span className="text-2xl animate-bounce" style={{ animationDuration: '3s' }}>👨‍⚕️</span>, position: { x: 650, y: 350 }, sourcePosition: 'right', targetPosition: 'left', zone: 'START' },
+  // Coluna 1: Entrada
+  { id: 'ENTRADA', label: 'PORTARIA / SENHA', icon: <span className="text-3xl">🏢</span>, position: { x: 300, y: 80 }, sourcePosition: 'bottom', targetPosition: 'top' },
+  { id: 'TRIAGEM', label: 'CLASSIFICAÇÃO', icon: <span className="text-3xl animate-pulse">🩺</span>, position: { x: 300, y: 320 }, sourcePosition: 'right', targetPosition: 'top' },
   
-  { id: 'LABORATORIO', label: 'LABORATÓRIO', icon: <span className="text-2xl animate-spin" style={{ animationDuration: '8s' }}>🧪</span>, position: { x: 1000, y: 100 }, sourcePosition: 'right', targetPosition: 'left', zone: 'ACTION' },
-  { id: 'IMAGEM', label: 'RX / TC / US', icon: <span className="text-2xl animate-spin" style={{ animationDuration: '5s' }}>☢️</span>, position: { x: 1000, y: 300 }, sourcePosition: 'right', targetPosition: 'left', zone: 'ACTION' },
-  { id: 'MEDICACAO', label: 'MEDICAÇÃO', icon: <span className="text-2xl animate-bounce" style={{ animationDuration: '4s' }}>💊</span>, position: { x: 1000, y: 600 }, sourcePosition: 'right', targetPosition: 'left', zone: 'ACTION' },
+  // Coluna 2: Núcleo (Azul)
+  { id: 'CONSULTA', label: 'CONSULTÓRIO', icon: <span className="text-3xl">👨‍⚕️</span>, position: { x: 550, y: 320 }, sourcePosition: 'right', targetPosition: 'left' },
   
-  { id: 'REAVALIACAO', label: 'REAVALIAÇÃO', icon: <span className="text-2xl">🔄</span>, position: { x: 1350, y: 350 }, sourcePosition: 'right', targetPosition: 'left', zone: 'END' },
-  { id: 'ALTA', label: 'ALTA MÉDICA', icon: <span className="text-2xl">🏠</span>, position: { x: 1700, y: 250 }, sourcePosition: 'right', targetPosition: 'left', zone: 'END' },
-  { id: 'INTERNACAO', label: 'INTERNAÇÃO', icon: <span className="text-2xl">🏥</span>, position: { x: 1700, y: 450 }, sourcePosition: 'right', targetPosition: 'left', zone: 'END' },
+  // Coluna Auxiliar (Ações)
+  { id: 'LABORATORIO', label: 'LABORATÓRIO', icon: <span className="text-3xl animate-spin" style={{ animationDuration: '8s' }}>🧪</span>, position: { x: 550, y: 80 }, sourcePosition: 'right', targetPosition: 'bottom' },
+  { id: 'IMAGEM', label: 'RX / TC / US', icon: <span className="text-3xl animate-spin" style={{ animationDuration: '5s' }}>☢️</span>, position: { x: 450, y: 550 }, sourcePosition: 'right', targetPosition: 'top' },
+  { id: 'MEDICACAO', label: 'MEDICAÇÃO', icon: <span className="text-3xl animate-bounce" style={{ animationDuration: '4s' }}>💊</span>, position: { x: 750, y: 550 }, sourcePosition: 'right', targetPosition: 'top' },
+  
+  // Coluna 3: Reavaliação (Reposicionada para evitar colisões)
+  { id: 'REAVALIACAO', label: 'REAVALIAÇÃO', icon: <span className="text-3xl">🔄</span>, position: { x: 750, y: 120 }, sourcePosition: 'right', targetPosition: 'left' },
+  { id: 'ALTA', label: 'ALTA MÉDICA', icon: <span className="text-3xl">🏠</span>, position: { x: 1100, y: 220 }, sourcePosition: 'right', targetPosition: 'left' },
+  { id: 'INTERNACAO', label: 'INTERNAÇÃO', icon: <span className="text-3xl">🏥</span>, position: { x: 1100, y: 460 }, sourcePosition: 'right', targetPosition: 'left' },
 ]
 
 export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowProps) {
   const [nodes, setNodes] = useState<any[]>([])
   const [edges, setEdges] = useState<Edge[]>([])
 
-  // Mapa de step → stepData da jornada real
   const stepMap = useMemo(() => {
     const map: Record<string, StepInfo> = {}
     if (journey?.steps) {
@@ -80,53 +84,60 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
 
     setNodes(newNodes)
 
-    // 2. Criar Edges Dinâmicas
+    // 2. Lógica Inteligente de Edges (Setas)
     const newEdges: Edge[] = []
     
-    const addPath = (id: string, source: string, target: string, type: 'spine' | 'action' = 'spine') => {
-      const isVisited = !!(stepMap[source] && (stepMap[target] || target === activeStep))
-      const isCurrent = target === activeStep
-      const isAction = type === 'action'
-      
+    const BLUE = '#3B82F6'
+    const RED = '#EF4444'
+    const YELLOW = '#EAB308'
+    const LILAC = '#D946EF'
+
+    const addPath = (id: string, source: string, target: string, color: string, sourceHandle?: string, targetHandle?: string, type: string = 'smoothstep') => {
       newEdges.push({
-        id,
-        source,
-        target,
-        type: 'smoothstep',
-        className: isAction ? 'edge-pulse-action' : 'edge-pulse-main',
-        style: {
-          strokeWidth: isAction ? 2 : 3,
-          stroke: isAction ? '#EAB308' : 'var(--dash-live)',
-          filter: isAction ? 'drop-shadow(0 0 4px rgba(234, 179, 8, 0.4))' : 'drop-shadow(0 0 6px rgba(45, 224, 185, 0.4))',
-          opacity: 1, 
-        },
-        markerEnd: { 
-          type: MarkerType.ArrowClosed, 
-          color: isAction ? '#EAB308' : 'var(--dash-live)' 
-        }
+        id, source, target,
+        sourceHandle, targetHandle,
+        type: type,
+        className: 'edge-pulse-main',
+        style: { strokeWidth: 3, stroke: color, filter: `drop-shadow(0 0 6px ${color}66)` },
+        markerEnd: { type: MarkerType.ArrowClosed, color: color }
       })
     }
 
-    addPath('e-ent-tri', 'ENTRADA', 'TRIAGEM')
-    addPath('e-tri-con', 'TRIAGEM', 'CONSULTA')
+    const has = (stepId: string) => !!(stepMap[stepId] || activeStep === stepId)
 
-    if (stepMap['LABORATORIO'] || activeStep === 'LABORATORIO') addPath('e-con-lab', 'CONSULTA', 'LABORATORIO', 'action')
-    if (stepMap['IMAGEM']      || activeStep === 'IMAGEM')      addPath('e-con-img', 'CONSULTA', 'IMAGEM', 'action')
-    if (stepMap['MEDICACAO']   || activeStep === 'MEDICACAO')   addPath('e-con-med', 'CONSULTA', 'MEDICACAO', 'action')
+    // Fluxo Inicial (Azul)
+    addPath('e-ent-tri', 'ENTRADA', 'TRIAGEM', BLUE, 'source-bottom', 'target-top')
+    addPath('e-tri-con', 'TRIAGEM', 'CONSULTA', BLUE, 'source-right', 'target-left')
 
-    if (stepMap['REAVALIACAO'] || activeStep === 'REAVALIACAO') {
-      if (stepMap['LABORATORIO']) addPath('e-lab-rea', 'LABORATORIO', 'REAVALIACAO', 'action')
-      if (stepMap['IMAGEM'])      addPath('e-img-rea', 'IMAGEM', 'REAVALIACAO', 'action')
-      if (stepMap['MEDICACAO'])   addPath('e-med-rea', 'MEDICACAO', 'REAVALIACAO', 'action')
-      if (!stepMap['LABORATORIO'] && !stepMap['IMAGEM'] && !stepMap['MEDICACAO']) {
-        addPath('e-con-rea', 'CONSULTA', 'REAVALIACAO')
+    // Requests (Vermelho - RETAS DO HUB)
+    if (has('LABORATORIO')) addPath('e-con-lab', 'CONSULTA', 'LABORATORIO', RED, 'source-top', 'target-bottom', 'straight')
+    if (has('IMAGEM'))      addPath('e-con-img', 'CONSULTA', 'IMAGEM', RED, 'source-bottom', 'target-top', 'straight')
+    if (has('MEDICACAO'))   addPath('e-con-med', 'CONSULTA', 'MEDICACAO', RED, 'source-bottom', 'target-top', 'straight')
+
+    // Returns / Reavaliação (Amarelo)
+    if (has('REAVALIACAO')) {
+      if (has('LABORATORIO')) addPath('e-lab-rea', 'LABORATORIO', 'REAVALIACAO', YELLOW)
+      if (has('IMAGEM'))      addPath('e-img-rea', 'IMAGEM', 'REAVALIACAO', YELLOW)
+      if (has('MEDICACAO'))   addPath('e-med-rea', 'MEDICACAO', 'REAVALIACAO', YELLOW)
+      
+      // Se caiu na reavaliação sem exames/meds (ex: observação clínica)
+      if (!has('LABORATORIO') && !has('IMAGEM') && !has('MEDICACAO')) {
+        addPath('e-con-rea', 'CONSULTA', 'REAVALIACAO', BLUE)
       }
+      
+      // Loop de Reavaliação -> Consultório (Mencionado no diagrama)
+      addPath('e-rea-con', 'REAVALIACAO', 'CONSULTA', BLUE)
     }
 
-    const finalStep = stepMap['ALTA'] ? 'ALTA' : (stepMap['INTERNACAO'] ? 'INTERNACAO' : (activeStep === 'ALTA' || activeStep === 'INTERNACAO' ? activeStep : null))
+    // Saída (Final - LILÁS SEMPRE DO HUB OU REAVAL)
+    const finalStep = has('ALTA') ? 'ALTA' : (has('INTERNACAO') ? 'INTERNACAO' : null)
     if (finalStep) {
-      const source = stepMap['REAVALIACAO'] ? 'REAVALIACAO' : 'CONSULTA'
-      addPath(`e-final`, source, finalStep)
+      if (has('REAVALIACAO')) {
+        addPath('e-rea-final', 'REAVALIACAO', finalStep, LILAC, 'source-right', 'target-left', 'straight')
+      } else {
+        // Agora o desfecho sai SEMPRE do Consultório de forma direta, mesmo se teve exames
+        addPath('e-con-final', 'CONSULTA', finalStep, LILAC, 'source-right', 'target-left', 'straight')
+      }
     }
 
     setEdges(newEdges)
@@ -135,33 +146,20 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
   return (
     <div className="absolute inset-0 bg-[#0F1219] overflow-hidden">
       <style>{`
-        .react-flow__node {
-          transition: z-index 0s !important;
-        }
-        .react-flow__node:hover {
-          z-index: 10000 !important;
-        }
-        .react-flow__viewport {
-          overflow: visible !important;
-        }
-        /* LEI MARCIAL: Bloqueio Universal de Cursor */
+        .react-flow__node { transition: z-index 0s !important; }
+        .react-flow__node:hover { z-index: 10000 !important; }
+        .react-flow__viewport { overflow: visible !important; }
         .react-flow, .react-flow *, .react-flow__pane, .react-flow__node, .react-flow__edge, .react-flow__edge-path {
           cursor: default !important;
         }
-        
-        /* Respiração Sutil das Linhas */
         @keyframes edge-breath {
-          0% { opacity: 0.5; }
-          50% { opacity: 0.9; }
-          100% { opacity: 0.5; }
+          0% { opacity: 0.5; stroke-dashoffset: 20; }
+          50% { opacity: 0.9; stroke-dashoffset: 0; }
+          100% { opacity: 0.5; stroke-dashoffset: -20; }
         }
-        
         .edge-pulse-main {
-          animation: edge-breath 4s infinite ease-in-out;
-        }
-        
-        .edge-pulse-action {
-          animation: edge-breath 6s infinite ease-in-out;
+          stroke-dasharray: 10;
+          animation: edge-breath 3s infinite linear;
         }
       `}</style>
 
@@ -169,33 +167,32 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        onNodesChange={(changes) => {}}
+        onNodesChange={() => {}}
         onNodeMouseEnter={(_, node) => {
           setNodes(nds => nds.map(n => n.id === node.id ? { ...n, zIndex: 10000 } : n));
         }}
         onNodeMouseLeave={(_, node) => {
           setNodes(nds => nds.map(n => n.id === node.id ? { ...n, zIndex: 1 } : n));
         }}
-        // Inviolabilidade do DOM: fitView só ativa no carregamento inicial do paciente
+        // MOBILIDADE ZERO: Canva Fixo
         fitView
-        fitViewOptions={{ padding: 0.2, minZoom: 0.2, maxZoom: 1.0 }}
+        fitViewOptions={{ padding: 0.1, minZoom: 0.5, maxZoom: 1.0 }}
         key={`flow-${journey?.NR_ATENDIMENTO || 'none'}`}
-        minZoom={0.1}
-        maxZoom={2}
+        minZoom={0.5}
+        maxZoom={1}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
-        panOnDrag={true}
-        zoomOnScroll={true}
-        selectionMode={undefined}
+        panOnDrag={false}
+        zoomOnScroll={false}
+        zoomOnPinch={false}
+        zoomOnDoubleClick={false}
         panOnScroll={false}
         style={{ width: '100%', height: '100%' }}
         onNodeClick={(_, node) => {
-          if (node.data?.stepData) {
-            onStepClick?.(node.data.stepData);
-          }
+          if (node.data?.stepData) onStepClick?.(node.data.stepData);
         }}
-        className="[&_.react-flow__pane]:!cursor-default [&_.react-flow__node]:!cursor-default"
+        className="[&_.react-flow__pane]:!cursor-default"
       >
         <Background color="rgba(255,255,255,0.03)" gap={20} size={1} />
       </ReactFlow>

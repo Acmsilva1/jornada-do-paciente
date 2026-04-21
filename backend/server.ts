@@ -136,6 +136,8 @@ fastify.get<{ Querystring: { unit?: string } }>('/api/patients', async (request,
       SEXO: a.SEXO,
       PRIORIDADE: a.PRIORIDADE,
       DT_ENTRADA: a.DT_ENTRADA,
+      DT_ALTA: a.DT_ALTA,
+      DT_DESFECHO: a.DT_DESFECHO,
       CD_PESSOA_FISICA: String(a.CD_PESSOA_FISICA),
     }));
 });
@@ -162,10 +164,31 @@ fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply
   steps.push({ type: 'FLOW', step: 'ENTRADA', label: 'Chegada / Senha', time: match.DT_ENTRADA, endTime: match.DT_TRIAGEM, minutes: 0 });
   
   if (match.DT_TRIAGEM) {
-    steps.push({ type: 'FLOW', step: 'TRIAGEM', label: 'Triagem', time: match.DT_TRIAGEM, endTime: match.DT_FIM_TRIAGEM, minutes: toMin(match.MIN_ENTRADA_X_TRIAGEM) });
+    steps.push({ 
+      type: 'FLOW', 
+      step: 'TRIAGEM', 
+      label: 'Triagem', 
+      time: match.DT_TRIAGEM, 
+      endTime: match.DT_FIM_TRIAGEM, 
+      minutes: toMin(match.MIN_ENTRADA_X_TRIAGEM),
+      detail: { priority: match.PRIORIDADE }
+    });
   }
   if (match.DT_ATEND_MEDICO) {
-    steps.push({ type: 'FLOW', step: 'CONSULTA', label: 'Consulta Médica', time: match.DT_ATEND_MEDICO, endTime: match.DT_DESFECHO, minutes: toMin(match.MIN_ENTRADA_X_CONSULTA) });
+    steps.push({ 
+      type: 'FLOW', 
+      step: 'CONSULTA', 
+      label: 'Consulta Médica', 
+      time: match.DT_ATEND_MEDICO, 
+      endTime: match.DT_DESFECHO, 
+      minutes: toMin(match.MIN_ENTRADA_X_CONSULTA),
+      detail: { 
+        specialty: match.DS_ESPECIALID,
+        doctor: match.MEDICO_ATENDIMENTO,
+        room: match.LOCALIZACAO_PAC,
+        cid: match.CD_CID
+      }
+    });
   }
 
   // 2. Ramificações (ZONA DE AÇÃO)
