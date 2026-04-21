@@ -25,13 +25,26 @@ export default function SectorBackgroundNode({ data }: any) {
   
   const timeStr = hasStep ? fmtTime(data.stepData.time) : null
   const durationStr = hasStep ? fmtMin(data.stepData.minutes) : null
+  const minutes = Number(data.stepData?.minutes || 0)
+  const slaLimit = Number(data.stepData?.slaLimit || 999)
+  const slaAlert = Number(data.stepData?.slaAlert || 999)
+  
+  const isOverMeta = hasStep && minutes > slaLimit
+  const isOverAlert = hasStep && minutes >= slaAlert && minutes <= slaLimit
+  
+  const statusColor = isOverMeta ? '#EF4444' : isOverAlert ? '#EAB308' : null
+  const statusClass = isOverMeta 
+    ? 'border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.4)] animate-[pulse_2s_infinite]' 
+    : isOverAlert 
+      ? 'border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.3)]' 
+      : ''
 
   return (
     <div
       className="relative"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{ cursor: hasStep ? 'pointer' : 'default' }}
+      style={{ cursor: 'default' }}
     >
       <Handle type="target" position={Position.Top} className="opacity-0 pointer-events-none" />
 
@@ -39,14 +52,25 @@ export default function SectorBackgroundNode({ data }: any) {
       <div className={`
         px-4 py-6 rounded-[2rem] w-48 min-h-[140px] flex flex-col items-center justify-center
         border transition-all duration-500 relative overflow-hidden backdrop-blur-md
-        ${isActive
+        ${statusClass || (isActive
           ? 'border-dash-live shadow-[0_0_30px_rgba(45,224,185,0.3)] bg-dash-live/10'
           : isFinished
             ? 'border-dash-live/40 bg-white/5 opacity-100 shadow-[0_0_15px_rgba(45,224,185,0.1)]'
-            : 'border-app-border bg-black/40 opacity-40 grayscale-[0.5]'
+            : 'border-app-border bg-black/40 opacity-40 grayscale-[0.5]')
         }
         ${hovered && hasStep ? 'scale-105 -translate-y-2 !opacity-100' : ''}
       `}>
+        {/* SLA Badge */}
+        {isOverMeta && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-red-500 text-white text-[7px] font-black px-2 py-0.5 rounded-full z-20 animate-pulse">
+            Meta Gerência
+          </div>
+        )}
+        {isOverAlert && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-yellow-500 text-black text-[7px] font-black px-2 py-0.5 rounded-full z-20">
+            Meta Supervisão
+          </div>
+        )}
         {/* Animated Background Pulse for Active */}
         {isActive && (
           <div className="absolute inset-0 bg-dash-live/10 animate-pulse pointer-events-none" />
@@ -62,9 +86,9 @@ export default function SectorBackgroundNode({ data }: any) {
         <div className="relative z-10 flex flex-col items-center gap-3">
           <div className={`
             p-3 rounded-2xl transition-all duration-500
-            ${isActive ? 'bg-dash-live text-[#0B0E14] shadow-[0_0_20px_var(--dash-live)]' : 'bg-black/20 text-[#3a3f58]'}
-            ${isFinished ? 'text-dash-live !bg-dash-live/10' : ''}
-          `}>
+            ${statusColor ? '' : isActive ? 'bg-dash-live text-[#0B0E14] shadow-[0_0_20px_var(--dash-live)]' : 'bg-black/20 text-[#3a3f58]'}
+            ${isFinished && !statusColor ? 'text-dash-live !bg-dash-live/10' : ''}
+          `} style={statusColor ? { backgroundColor: statusColor, color: '#000', boxShadow: `0 0 15px ${statusColor}` } : {}}>
             {data.icon}
           </div>
           
@@ -84,13 +108,25 @@ export default function SectorBackgroundNode({ data }: any) {
           {/* Time badge */}
           {(isActive || isFinished) && timeStr && (
             <div className={`
-              flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-all
+              flex items-center gap-2 px-2.5 py-1 rounded-full border transition-all
               ${isActive ? 'bg-dash-live/20 border-dash-live/40' : 'bg-black/40 border-white/10'}
             `}>
-              <Clock size={10} className={isActive ? 'text-dash-live' : 'text-app-muted'} />
-              <span className={`text-[10px] font-mono font-bold ${isActive ? 'text-dash-live' : 'text-app-muted'}`}>
-                {timeStr}
-              </span>
+              <div className="flex items-center gap-1">
+                <Clock size={10} className={isActive ? 'text-dash-live' : 'text-app-muted'} />
+                <span className={`text-[10px] font-mono font-bold ${isActive ? 'text-dash-live' : 'text-app-muted'}`}>
+                  {timeStr}
+                </span>
+              </div>
+              
+              {data.stepData?.type === 'OUTCOME' && minutes > 0 && (
+                <>
+                  <div className="w-[1px] h-3 bg-white/10 mx-0.5" />
+                  <div className="flex items-center gap-1">
+                    <span className="text-[9px] text-app-muted uppercase font-black tracking-tighter">Total</span>
+                    <span className="text-[10px] text-white font-bold">{minutes} min</span>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -216,16 +252,34 @@ export default function SectorBackgroundNode({ data }: any) {
                      </div>
                   )}
                   
-                  {/* FOOTER: Tempos */}
-                  <div className="flex items-center justify-between px-1 pt-1 bg-black/20 rounded py-1.5 border border-black/40">
-                    <div className="flex flex-col px-2">
-                      <span className="text-[8px] text-app-muted uppercase tracking-widest font-black mb-0.5">Início:</span>
-                      <span className="text-white font-mono font-bold text-[11px]">{timeStr || '--:--'}</span>
+                  {/* FOOTER: Tempos e SLA Performance */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between px-1 pt-1 bg-black/20 rounded py-1.5 border border-black/40">
+                      <div className="flex flex-col px-2">
+                        <span className="text-[8px] text-app-muted uppercase tracking-widest font-black mb-0.5">Início:</span>
+                        <span className="text-white font-mono font-bold text-[11px]">{timeStr || '--:--'}</span>
+                      </div>
+                      {data.stepData?.endTime && (
+                        <div className="flex flex-col text-right px-2 border-l border-white/5">
+                          <span className="text-[8px] text-dash-live/60 uppercase tracking-widest font-black mb-0.5">Fim:</span>
+                          <span className="text-dash-live font-mono font-bold text-[11px]">{fmtTime(data.stepData.endTime)}</span>
+                        </div>
+                      )}
                     </div>
-                    {data.stepData?.endTime && (
-                      <div className="flex flex-col text-right px-2 border-l border-white/5">
-                        <span className="text-[8px] text-dash-live/60 uppercase tracking-widest font-black mb-0.5">Fim:</span>
-                        <span className="text-dash-live font-mono font-bold text-[11px]">{fmtTime(data.stepData.endTime)}</span>
+
+                    {/* SLA Performance Bar */}
+                    {hasStep && data.stepData.slaLimit && (
+                      <div className={`p-2 rounded-lg border ${isOverMeta ? 'bg-red-500/10 border-red-500/30' : isOverAlert ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-white/5 border-white/10'}`}>
+                         <div className="flex justify-between items-center mb-1">
+                            <span className="text-[8px] text-app-muted uppercase font-black uppercase tracking-widest">Performance SLA:</span>
+                            <span className={`text-[9px] font-bold ${isOverMeta ? 'text-red-400' : isOverAlert ? 'text-yellow-400' : 'text-dash-live'}`}>
+                               {isOverMeta ? 'Meta Gerência Excedida' : isOverAlert ? 'Meta Supervisão Excedida' : 'Dentro da Meta'}
+                            </span>
+                         </div>
+                         <div className="flex items-baseline gap-1">
+                            <span className="text-xs font-bold text-white">{minutes} min</span>
+                            <span className="text-[9px] text-app-muted">de meta {data.stepData.slaLimit} min</span>
+                         </div>
                       </div>
                     )}
                   </div>

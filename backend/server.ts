@@ -19,6 +19,7 @@ let medData = new Map<string, any[]>();
 let viasData = new Map<string, string[]>();
 let imagingData = new Map<string, any[]>(); // RX, ECG, TC, US
 let revalData = new Map<string, any[]>();
+let metas: any[] = [];
 
 const loadCSV = (filename: string): Promise<any[]> => {
   return new Promise((resolve, reject) => {
@@ -86,6 +87,9 @@ const start = async () => {
       revalData.set(String(r.NR_ATENDIMENTO), list);
     });
 
+    metas = await loadCSV('meta_tempos.csv');
+    fastify.log.info(`${metas.length} metas de tempo carregadas.`);
+
     fastify.log.info('Carga de dados concluída.');
 
     await fastify.listen({ port: 3001, host: '0.0.0.0' });
@@ -100,6 +104,10 @@ const start = async () => {
 // Unidades únicas
 fastify.get('/api/units', async () => {
   return [...new Set(globalAttendances.map(a => a.UNIDADE).filter(Boolean))].sort();
+});
+
+fastify.get('/api/metas', async () => {
+  return metas;
 });
 
 // Pacientes por unidade
@@ -145,6 +153,10 @@ fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply
 
   const steps: any[] = [];
   const toMin = (val: any) => (val && !isNaN(Number(val)) ? Number(val) : null);
+  const diffInMin = (t1: string, t2: string) => {
+    if (!t1 || !t2) return null;
+    return Math.round((new Date(t2).getTime() - new Date(t1).getTime()) / 60000);
+  };
 
   // 1. Fluxo Base (ZONA INICIAL)
   steps.push({ type: 'FLOW', step: 'ENTRADA', label: 'Chegada / Senha', time: match.DT_ENTRADA, endTime: match.DT_TRIAGEM, minutes: 0 });
@@ -167,6 +179,7 @@ fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply
       label: 'Laboratório', 
       time: sorted[0].DT_SOLICITACAO, 
       endTime: sortedExames[sortedExames.length - 1].DT_EXAME,
+      minutes: diffInMin(sorted[0].DT_SOLICITACAO, sortedExames[sortedExames.length - 1].DT_EXAME),
       count: labs.length, 
       detail: labs.map(l => ({ name: l.DS_PROC_EXAME, time: l.DT_SOLICITACAO, status: 'Coletado' }))
     });
@@ -182,6 +195,7 @@ fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply
       label: 'RX / TC / US', 
       time: sorted[0].DT_SOLICITACAO, 
       endTime: sortedExames[sortedExames.length - 1].DT_EXAME,
+      minutes: diffInMin(sorted[0].DT_SOLICITACAO, sortedExames[sortedExames.length - 1].DT_EXAME),
       count: images.length, 
       detail: images.map(i => ({ name: i.EXAME, time: i.DT_SOLICITACAO, status: i.STATUS || 'Realizado' }))
     });
@@ -199,6 +213,7 @@ fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply
       label: 'Medicação', 
       time: sorted[0].DT_PRESCRICAO, 
       endTime: sortedAdmin[sortedAdmin.length - 1].DT_ADMINISTRACAO,
+      minutes: diffInMin(sorted[0].DT_PRESCRICAO, sortedAdmin[sortedAdmin.length - 1].DT_ADMINISTRACAO),
       count: meds.length, 
       detail: sorted.map((m, idx) => {
         const name = materials[idx] || materials[0] || 'Medicamento Administrado';
@@ -216,6 +231,7 @@ fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply
       step: 'REAVALIACAO', 
       label: 'Reavaliação', 
       time: sorted[0].DT_SOLIC_REAVALIACAO, 
+      minutes: diffInMin(sorted[0].DT_SOLIC_REAVALIACAO, sorted[sorted.length - 1].DT_SOLIC_REAVALIACAO) || 30, // Fallback se só tiver uma reaval
       count: revals.length,
       detail: revals.map(r => ({ name: `Reavaliação por ${r.MEDICO || 'Médico'}`, time: r.DT_SOLIC_REAVALIACAO }))
     });
@@ -229,10 +245,36 @@ fastify.get<{ Params: { '*': string } }>('/api/journey/*', async (request, reply
       label: isIntern ? 'Internação' : 'Alta Médica', 
       time: match.DT_DESFECHO, 
       endTime: match.DT_ALTA,
-      minutes: toMin(match.MIN_ENTRADA_X_ALTA),
+      // Cálculo real de permanência: Saída - Entrada Portaria
+      minutes: diffInMin(match.DT_ENTRADA, match.DT_DESFECHO),
       detail: match.DESFECHO
     });
   }
+
+  // 4. Acoplagem de Metas (Inteligência de SLA)
+  const findMeta = (key: string) => metas.find(m => m.CHAVE === key);
+  
+  steps.forEach(s => {
+    let metaKey = '';
+    if (s.step === 'TRIAGEM') metaKey = 'TRIAGEM_MIN';
+    if (s.step === 'CONSULTA') metaKey = 'CONSULTA_MIN';
+    if (s.step === 'MEDICACAO') metaKey = 'MEDICACAO_MIN';
+    if (s.step === 'REAVALIACAO') metaKey = 'REAVALIACAO_MIN';
+    if (s.step === 'ALTA') metaKey = 'PERMANENCIA_MIN';
+    if (s.step === 'LABORATORIO') metaKey = 'PROCEDIMENTO_MIN';
+    if (s.step === 'IMAGEM') {
+      const hasTC = s.detail?.some((d: any) => d.name?.includes('TC') || d.name?.includes('US'));
+      metaKey = hasTC ? 'TC_US_MIN' : 'RX_ECG_MIN';
+    }
+
+    if (metaKey) {
+      const m = findMeta(metaKey);
+      if (m) {
+        s.slaLimit = Number(m.VALOR_MIN);
+        s.slaAlert = Number(m.ALERTA_MIN);
+      }
+    }
+  });
 
   return {
     ...match,
