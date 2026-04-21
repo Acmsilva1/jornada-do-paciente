@@ -176,10 +176,12 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
         onNodeMouseLeave={(_, node) => {
           setNodes(nds => nds.map(n => n.id === node.id ? { ...n, zIndex: 1 } : n));
         }}
+        // Inviolabilidade do DOM: fitView só ativa no carregamento inicial do paciente
         fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.2}
-        maxZoom={1.5}
+        fitViewOptions={{ padding: 0.2, minZoom: 0.2, maxZoom: 1.0 }}
+        key={`flow-${journey?.NR_ATENDIMENTO || 'none'}`}
+        minZoom={0.1}
+        maxZoom={2}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}

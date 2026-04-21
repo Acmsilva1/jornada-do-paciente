@@ -100,11 +100,16 @@ export default function App() {
           return r.json();
         })
         .then((data: any) => {
-          if (data && !data.error && Array.isArray(data.steps)) {
-            setJourney(data as JourneyData)
-            const lastStep = data.steps[data.steps.length - 1];
-            if (lastStep) setActiveStep(lastStep.step);
-          }
+            if (data && !data.error && Array.isArray(data.steps)) {
+              // Só atualizamos o estado se houver mudança real para evitar re-renders desnecessários
+              setJourney(prev => {
+                if (JSON.stringify(prev?.steps) === JSON.stringify(data.steps)) return prev;
+                return data as JourneyData;
+              });
+              
+              const lastStep = data.steps[data.steps.length - 1];
+              if (lastStep) setActiveStep(lastStep.step);
+            }
         })
         .catch(err => {
           console.warn('Sincronização falhou (Servidor recarregando?), mantendo dados atuais:', err.message);
@@ -168,9 +173,13 @@ export default function App() {
 
   // Carrega jornada real + anima os passos ao selecionar paciente
   useEffect(() => {
-    if (!selectedPatient) { setJourney(null); setActiveStep(''); return }
-    setLoadingJourney(true)
-    setActiveStep('')
+    const isSamePatient = journey?.NR_ATENDIMENTO === selectedPatient.NR_ATENDIMENTO;
+    
+    if (!isSamePatient) {
+      setLoadingJourney(true)
+      setActiveStep('')
+    }
+
     fetch(`http://localhost:3001/api/journey/${selectedPatient.NR_ATENDIMENTO}`)
       .then(async r => {
         if (!r.ok) throw new Error(`HTTP Error ${r.status}`);
@@ -178,16 +187,23 @@ export default function App() {
       })
       .then((data: any) => {
         if (!data || data.error || !Array.isArray(data.steps)) return
+        
         setJourney(data as JourneyData)
         
-        const startAnimation = () => {
-          data.steps.forEach((s: JourneyStep, index: number) => {
-            setTimeout(() => setActiveStep(s.step), index * 1200)
-          })
+        // Só dispara a animação de passos se for um NOVO paciente
+        if (!isSamePatient) {
+          const startAnimation = () => {
+            data.steps.forEach((s: JourneyStep, index: number) => {
+              setTimeout(() => setActiveStep(s.step), index * 1200)
+            })
+          }
+          const delay = isSwitching ? 2200 : 0 
+          setTimeout(startAnimation, delay)
+        } else {
+          // Se for o mesmo paciente, apenas atualiza o passo ativo para o mais recente sem re-animar tudo
+          const lastStep = data.steps[data.steps.length - 1];
+          if (lastStep) setActiveStep(lastStep.step);
         }
-
-        const delay = isSwitching ? 2200 : 0 
-        setTimeout(startAnimation, delay)
       })
       .catch(err => {
         console.error('Falha ao carregar jornada inicial:', err);
