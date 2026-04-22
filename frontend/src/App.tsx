@@ -100,10 +100,13 @@ export default function App() {
       fetch(`http://localhost:3001/api/journey/${selectedPatient.NR_ATENDIMENTO}`)
         .then(async r => r.json())
         .then((data: any) => {
-            if (data && !data.error && Array.isArray(data.steps)) {
-              setJourney(data as JourneyData);
-              const lastStep = data.steps[data.steps.length - 1];
-              if (lastStep) setActiveStep(lastStep.step);
+            // VALIDAÇÃO CRÍTICA: Só atualiza se o dado for válido e ainda for o mesmo paciente
+            if (data && !data.error && Array.isArray(data.steps) && data.steps.length > 0) {
+              if (data.NR_ATENDIMENTO === selectedPatient.NR_ATENDIMENTO) {
+                setJourney(data as JourneyData);
+                const lastStep = data.steps[data.steps.length - 1];
+                if (lastStep) setActiveStep(lastStep.step);
+              }
             }
         })
         .catch(console.error)
@@ -172,14 +175,18 @@ export default function App() {
       return; 
     }
     
-    const isSamePatient = journey?.NR_ATENDIMENTO === selectedPatient.NR_ATENDIMENTO;
-    
-    // SÓ MOSTRAMOS O LOADER SE O PACIENTE MUDOU
-    if (!isSamePatient) {
+    // ESTABILIZAÇÃO: Só limpa se o paciente REALMENTE mudou (ID diferente)
+    // Se for o mesmo ID, apenas deixamos o fetch rodar e atualizar silenciosamente
+    const currentJourneyId = journey?.NR_ATENDIMENTO;
+    const targetPatientId = selectedPatient.NR_ATENDIMENTO;
+
+    if (currentJourneyId !== targetPatientId) {
       setLoadingJourney(true)
-      setJourney(null) // Limpa para o novo
+      setJourney(null) 
       setActiveStep('')
     }
+
+    const isSamePatient = currentJourneyId === targetPatientId;
 
     fetch(`http://localhost:3001/api/journey/${selectedPatient.NR_ATENDIMENTO}`)
       .then(async r => {
@@ -236,7 +243,7 @@ export default function App() {
   // Removido sidebarContent para integração direta no layout principal
 
   return (
-    <div className="flex h-screen bg-[#0B0E14] text-app-fg overflow-hidden font-sans">
+    <div className="flex h-screen bg-[#1E2235] text-app-fg overflow-hidden font-sans">
       {/* Sidebar Removida - Agora tudo é sobreposição (overlap) */}
 
       {/* Content */}

@@ -149,10 +149,25 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
   }, [activeStep, stepMap, onStepClick, journey])
 
   return (
-    <div className="absolute inset-0 top-16 bg-[#0F1219] overflow-hidden">
+    <div className="absolute inset-0 top-16 bg-[#1a1c2e] overflow-hidden" style={{
+      backgroundImage: 'radial-gradient(circle at 50% 50%, #202b4d 0%, #1a1c2e 100%)'
+    }}>
       <style>{`
-        /* Evita que o canvas cole no topo sob o header */
-        .react-flow__pane { margin-top: 20px; }
+        .react-flow__pane { 
+          margin-top: 20px;
+          background: radial-gradient(circle at 0% 0%, rgba(45, 224, 185, 0.05) 0%, transparent 40%),
+                      radial-gradient(circle at 100% 100%, rgba(59, 130, 246, 0.05) 0%, transparent 40%);
+        }
+        
+        .react-flow__pane::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+          opacity: 0.02;
+          pointer-events: none;
+        }
+
         .react-flow__node { transition: z-index 0s !important; }
         .react-flow__node:hover { z-index: 10000 !important; }
         .react-flow__viewport { overflow: visible !important; }
