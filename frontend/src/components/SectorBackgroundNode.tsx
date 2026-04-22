@@ -203,11 +203,21 @@ export default function SectorBackgroundNode({ data }: any) {
       {/* Tooltip Surreal */}
       {hovered && hasStep && (
         (() => {
+          const y = data.yPos ?? 0;
           const openLeft = (data.xPos ?? 250) >= 400;
-          const isBottom = (data.yPos ?? 0) >= 700;
+          const isBottom = y >= 700;
+          const isTop = y <= 350; // Ajustado para pegar o ENTRADA e LAB
           
-          const verticalPos = isBottom ? 'bottom-0' : 'top-1/2 -translate-y-1/2';
-          const arrowVerticalPos = isBottom ? 'bottom-[60px]' : 'top-1/2 -translate-y-1/2';
+          let verticalPos = 'top-1/2 -translate-y-1/2';
+          let arrowVerticalPos = 'top-1/2 -translate-y-1/2';
+
+          if (isBottom) {
+            verticalPos = 'bottom-0 translate-y-0';
+            arrowVerticalPos = 'bottom-[60px] translate-y-0';
+          } else if (isTop) {
+            verticalPos = 'top-0 translate-y-0';
+            arrowVerticalPos = 'top-[40px] translate-y-0';
+          }
 
           const posClass = openLeft 
             ? `right-full mr-4 ${verticalPos} slide-in-from-right-2`

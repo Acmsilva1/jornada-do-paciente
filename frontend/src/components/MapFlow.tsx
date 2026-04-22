@@ -3,11 +3,16 @@ import ReactFlow, { Background, Edge, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import SectorBackgroundNode from './SectorBackgroundNode'
 import PatientWalkingNode from './PatientWalkingNode'
+import FootprintEdge from './FootprintEdge'
 import { Beaker, Camera, Building2, Activity, Stethoscope, Pill, HeartPulse } from 'lucide-react'
 
 const nodeTypes = {
   sector: SectorBackgroundNode,
   patient: PatientWalkingNode
+}
+
+const edgeTypes = {
+  footprint: FootprintEdge
 }
 
 type StepInfo = { step: string; label: string; time: string | null; minutes: number | null; type: string }
@@ -20,21 +25,21 @@ interface MapFlowProps {
 
 const SECTOR_DEFINITIONS = [
   // Coluna 1: Entrada
-  { id: 'ENTRADA', label: 'PORTARIA / SENHA', icon: <span className="text-3xl">🏢</span>, position: { x: 300, y: 80 }, sourcePosition: 'bottom', targetPosition: 'top' },
-  { id: 'TRIAGEM', label: 'CLASSIFICAÇÃO', icon: <span className="text-3xl animate-pulse">🩺</span>, position: { x: 300, y: 320 }, sourcePosition: 'right', targetPosition: 'top' },
-  
-  // Coluna 2: Núcleo (Azul)
-  { id: 'CONSULTA', label: 'CONSULTÓRIO', icon: <span className="text-3xl">👨‍⚕️</span>, position: { x: 550, y: 320 }, sourcePosition: 'right', targetPosition: 'left' },
-  
+  { id: 'ENTRADA',    label: 'PORTARIA / SENHA', icon: <span className="text-3xl">🏢</span>,                                                    position: { x: 200,  y: 180 }, sourcePosition: 'bottom', targetPosition: 'top' },
+  { id: 'TRIAGEM',   label: 'CLASSIFICAÇÃO',    icon: <span className="text-3xl animate-pulse">🩺</span>,                                       position: { x: 200,  y: 520 }, sourcePosition: 'right',  targetPosition: 'top' },
+
+  // Coluna 2: Núcleo
+  { id: 'CONSULTA',  label: 'CONSULTÓRIO',       icon: <span className="text-3xl">👨‍⚕️</span>,                                                  position: { x: 620,  y: 520 }, sourcePosition: 'right',  targetPosition: 'left' },
+
   // Coluna Auxiliar (Ações)
-  { id: 'LABORATORIO', label: 'LABORATÓRIO', icon: <span className="text-3xl animate-spin" style={{ animationDuration: '8s' }}>🧪</span>, position: { x: 550, y: 80 }, sourcePosition: 'right', targetPosition: 'bottom' },
-  { id: 'IMAGEM', label: 'RX / TC / US', icon: <span className="text-3xl animate-spin" style={{ animationDuration: '5s' }}>☢️</span>, position: { x: 450, y: 550 }, sourcePosition: 'right', targetPosition: 'top' },
-  { id: 'MEDICACAO', label: 'MEDICAÇÃO', icon: <span className="text-3xl animate-bounce" style={{ animationDuration: '4s' }}>💊</span>, position: { x: 750, y: 550 }, sourcePosition: 'right', targetPosition: 'top' },
-  
-  // Coluna 3: Reavaliação (Reposicionada para evitar colisões)
-  { id: 'REAVALIACAO', label: 'REAVALIAÇÃO', icon: <span className="text-3xl">🔄</span>, position: { x: 750, y: 120 }, sourcePosition: 'right', targetPosition: 'left' },
-  { id: 'ALTA', label: 'ALTA MÉDICA', icon: <span className="text-3xl">🏠</span>, position: { x: 1100, y: 220 }, sourcePosition: 'right', targetPosition: 'left' },
-  { id: 'INTERNACAO', label: 'INTERNAÇÃO', icon: <span className="text-3xl">🏥</span>, position: { x: 1100, y: 460 }, sourcePosition: 'right', targetPosition: 'left' },
+  { id: 'LABORATORIO', label: 'LABORATÓRIO',     icon: <span className="text-3xl animate-spin" style={{ animationDuration: '8s' }}>🧪</span>,   position: { x: 620,  y: 180 }, sourcePosition: 'right',  targetPosition: 'bottom' },
+  { id: 'IMAGEM',    label: 'RX / TC / US',      icon: <span className="text-3xl animate-spin" style={{ animationDuration: '5s' }}>☢️</span>,   position: { x: 420,  y: 780 }, sourcePosition: 'right',  targetPosition: 'top' },
+  { id: 'MEDICACAO', label: 'MEDICAÇÃO',         icon: <span className="text-3xl animate-bounce" style={{ animationDuration: '4s' }}>💊</span>, position: { x: 820,  y: 780 }, sourcePosition: 'right',  targetPosition: 'top' },
+
+  // Coluna 3: Reavaliação e Desfechos
+  { id: 'REAVALIACAO', label: 'REAVALIAÇÃO',    icon: <span className="text-3xl">🔄</span>,                                                    position: { x: 900,  y: 220 }, sourcePosition: 'right',  targetPosition: 'left' },
+  { id: 'ALTA',      label: 'ALTA MÉDICA',       icon: <span className="text-3xl">🏠</span>,                                                    position: { x: 1150, y: 320 }, sourcePosition: 'right',  targetPosition: 'left' },
+  { id: 'INTERNACAO', label: 'INTERNAÇÃO',      icon: <span className="text-3xl">🏥</span>,                                                    position: { x: 1150, y: 600 }, sourcePosition: 'right',  targetPosition: 'left' },
 ]
 
 export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowProps) {
@@ -96,7 +101,7 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
       newEdges.push({
         id, source, target,
         sourceHandle, targetHandle,
-        type: type,
+        type,
         className: 'edge-pulse-main',
         style: { strokeWidth: 3, stroke: color, filter: `drop-shadow(0 0 6px ${color}66)` },
         markerEnd: { type: MarkerType.ArrowClosed, color: color }
@@ -107,7 +112,7 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
 
     // Fluxo Inicial (Azul)
     addPath('e-ent-tri', 'ENTRADA', 'TRIAGEM', BLUE, 'source-bottom', 'target-top')
-    addPath('e-tri-con', 'TRIAGEM', 'CONSULTA', BLUE, 'source-right', 'target-left')
+    addPath('e-tri-con', 'TRIAGEM', 'CONSULTA', BLUE, 'source-right', 'target-left', 'straight')
 
     // Requests (Vermelho - RETAS DO HUB)
     if (has('LABORATORIO')) addPath('e-con-lab', 'CONSULTA', 'LABORATORIO', RED, 'source-top', 'target-bottom', 'straight')
@@ -144,17 +149,31 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
   }, [activeStep, stepMap, onStepClick, journey])
 
   return (
-    <div className="absolute inset-0 bg-[#0F1219] overflow-hidden">
+    <div className="absolute inset-0 top-16 bg-[#0F1219] overflow-hidden">
       <style>{`
+        /* Evita que o canvas cole no topo sob o header */
+        .react-flow__pane { margin-top: 20px; }
         .react-flow__node { transition: z-index 0s !important; }
         .react-flow__node:hover { z-index: 10000 !important; }
         .react-flow__viewport { overflow: visible !important; }
-        .react-flow, .react-flow *, .react-flow__pane, .react-flow__node, .react-flow__edge, .react-flow__edge-path {
+
+        /* Cursor Nativo do Sistema */
+        .react-flow__pane {
+          cursor: grab !important;
+        }
+
+        .react-flow__pane:active {
+          cursor: grabbing !important;
+        }
+
+        /* Nós e edges mantêm cursor padrão */
+        .react-flow__node, .react-flow__edge, .react-flow__edge-path {
           cursor: default !important;
         }
+
         @keyframes edge-breath {
-          0% { opacity: 0.5; stroke-dashoffset: 20; }
-          50% { opacity: 0.9; stroke-dashoffset: 0; }
+          0%   { opacity: 0.5; stroke-dashoffset: 20; }
+          50%  { opacity: 0.9; stroke-dashoffset: 0; }
           100% { opacity: 0.5; stroke-dashoffset: -20; }
         }
         .edge-pulse-main {
@@ -174,25 +193,22 @@ export default function MapFlow({ activeStep, journey, onStepClick }: MapFlowPro
         onNodeMouseLeave={(_, node) => {
           setNodes(nds => nds.map(n => n.id === node.id ? { ...n, zIndex: 1 } : n));
         }}
-        // MOBILIDADE ZERO: Canva Fixo
         fitView
-        fitViewOptions={{ padding: 0.1, minZoom: 0.5, maxZoom: 1.0 }}
+        fitViewOptions={{ 
+          padding: 0.15, 
+          includeHiddenNodes: false,
+          duration: 800
+        }}
         key={`flow-${journey?.NR_ATENDIMENTO || 'none'}`}
-        minZoom={0.5}
-        maxZoom={1}
+        minZoom={0.2}
+        maxZoom={1.5}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
-        panOnDrag={false}
-        zoomOnScroll={false}
-        zoomOnPinch={false}
-        zoomOnDoubleClick={false}
-        panOnScroll={false}
         style={{ width: '100%', height: '100%' }}
         onNodeClick={(_, node) => {
           if (node.data?.stepData) onStepClick?.(node.data.stepData);
         }}
-        className="[&_.react-flow__pane]:!cursor-default"
       >
         <Background color="rgba(255,255,255,0.03)" gap={20} size={1} />
       </ReactFlow>
