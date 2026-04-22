@@ -2,6 +2,15 @@
 
 Esta documentação detalha a arquitetura de estilos que permite que as aplicações do sistema se ajustem automaticamente, utilizando variáveis CSS, o espaço de cor OKLCH e técnicas de escalonamento dinâmico.
 
+## Projeto « Jornada do Paciente » (este repositório)
+
+Os ficheiros de estilo efetivamente usados pela app são:
+
+- `frontend/src/index.css` — tokens (`--dash-live`, `--app-muted`, etc.) e base Tailwind
+- `frontend/tailwind.config.mjs` — registo de caminhos de conteúdo e extensão do tema
+
+As tabelas de caminhos abaixo (`FRONTEND/src/...`) referem-se a **outros** projetos do ecossistema; use-as como referência conceptual, não como árvore literal deste repo. Para fluxo completo da aplicação, consulte [doc.md](doc.md) e [README.md](README.md).
+
 ## Implementação no projeto (referência)
 
 | Peça | Caminho no repositório |
