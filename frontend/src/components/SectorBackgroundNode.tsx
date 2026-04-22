@@ -25,7 +25,6 @@ export default function SectorBackgroundNode({ data }: any) {
   
   const timeStr = hasStep ? fmtTime(data.stepData.time) : null
   const endTimeStr = hasStep && data.stepData.endTime ? fmtTime(data.stepData.endTime) : null
-  const durationStr = hasStep ? fmtMin(data.stepData.minutes) : null
   const minutes = Math.round(Number(data.stepData?.minutes || 0))
   const slaLimit = Number(data.stepData?.slaLimit || 999)
   const slaAlert = Number(data.stepData?.slaAlert || 999)
@@ -228,6 +227,17 @@ export default function SectorBackgroundNode({ data }: any) {
             : `absolute -left-[8px] ${arrowVerticalPos} border-t-[8px] border-t-transparent border-b-[8px] border-b-transparent border-r-[8px] border-r-dash-live/30`;
 
           const stepKey = data.stepData?.step || '';
+          const isDesfechoStep = stepKey === 'ALTA' || stepKey === 'INTERNACAO';
+          const statusBadgeLabel = isDesfechoStep
+            ? 'Finalizado'
+            : isActive
+              ? 'EM ANDAMENTO'
+              : 'CONCLUÍDO';
+          const statusBadgeClass = isDesfechoStep
+            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+            : isActive
+              ? 'bg-dash-live/10 text-dash-live border-dash-live/20'
+              : 'bg-white/5 text-app-muted border-white/10';
 
           const getHexFromCor = (corName: string) => {
             if (!corName) return '#4B5263';
@@ -249,8 +259,8 @@ export default function SectorBackgroundNode({ data }: any) {
                 {/* Cabeçalho */}
                 <div className="flex items-center justify-between gap-4 mb-3 pb-2 border-b border-white/10">
                   <p className="font-black text-[11px] text-dash-live uppercase tracking-[0.2em]">{data.label}</p>
-                  <div className={`px-2 py-0.5 rounded text-[9px] font-bold border ${isActive ? 'bg-dash-live/10 text-dash-live border-dash-live/20' : 'bg-white/5 text-app-muted border-white/10'}`}>
-                    {isActive ? 'EM ANDAMENTO' : 'CONCLUÍDO'}
+                  <div className={`px-2 py-0.5 rounded text-[9px] font-bold border ${statusBadgeClass}`}>
+                    {statusBadgeLabel}
                   </div>
                 </div>
                 

@@ -1,4 +1,4 @@
-import { X, Clock, Calendar, Activity, FileText, Stethoscope, AlertTriangle, Beaker, Pill, Camera, ChevronRight } from 'lucide-react'
+import { X, Clock, Activity, FileText, Stethoscope, Beaker, Pill, Camera, ChevronRight } from 'lucide-react'
 
 export type StepInfo = {
   step: string
@@ -60,7 +60,9 @@ export default function StepDetailModal({ data, onClose }: { data: ModalData; on
   } else if (step.time && isFinalStep && allSteps.length > 0) {
     // Para o card final, calcula a permanência total desde a entrada
     const firstStep = allSteps[0]
-    duration = (new Date(step.time).getTime() - new Date(firstStep.time).getTime()) / 60000
+    if (firstStep?.time) {
+      duration = (new Date(step.time).getTime() - new Date(firstStep.time).getTime()) / 60000
+    }
   }
 
   const detailList = Array.isArray(step.detail) ? step.detail : []

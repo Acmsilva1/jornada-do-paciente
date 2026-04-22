@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react'
 import MapFlow from './components/MapFlow'
 import StepDetailModal from './components/StepDetailModal'
-import { HeartPulse, Building2, User, Activity, AlertTriangle, ChevronDown, Clock, Stethoscope, Map as MapIcon, BarChart3, Pill, Beaker, Camera, RefreshCw, Timer, Search } from 'lucide-react'
+import { PatientQueueRow } from './components/PatientQueueRow'
+import { HeartPulse, Activity, ChevronLeft, ChevronRight, Map as MapIcon, Pill, Beaker, Camera, RefreshCw, Timer, Search } from 'lucide-react'
 
 export type PatientSummary = {
   NR_ATENDIMENTO: string;
@@ -53,13 +54,6 @@ const COR_BADGE: Record<string, string> = {
   BRANCO: 'bg-gray-500/20 text-gray-300 border-gray-500/30',
 }
 
-function fmtMin(min: number | null) {
-  if (min === null || min === undefined) return '—'
-  const h = Math.floor(Number(min) / 60)
-  const m = Math.round(Number(min) % 60)
-  return h > 0 ? `${h}h ${m}min` : `${m}min`
-}
-
 function fmtDatetime(dt: string | null) {
   if (!dt) return '—'
   try { return new Date(dt).toLocaleString('pt-BR', { hour: '2-digit', minute: '2-digit' }) } catch { return dt }
@@ -81,6 +75,8 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [isSwitching, setIsSwitching] = useState(false)
+  const [patientPanelOpen, setPatientPanelOpen] = useState(false)
+  const [panelSearchTerm, setPanelSearchTerm] = useState('')
 
   // Função central de Recarga Silenciosa (ETL Sync)
   const refreshData = async (isManual = false) => {
@@ -154,6 +150,11 @@ export default function App() {
       .catch(console.error)
   }, [])
 
+  // Limpa filtro local ao trocar de unidade
+  useEffect(() => {
+    setPanelSearchTerm('')
+  }, [selectedUnit])
+
   // Carrega pacientes ao mudar unidade
   useEffect(() => {
     if (!selectedUnit) { setPatients([]); setSelectedPatient(null); setJourney(null); setActiveStep(''); return }
@@ -222,22 +223,67 @@ export default function App() {
 
   const corBadge = journey ? (COR_BADGE[journey.COR] ?? COR_BADGE.BRANCO) : ''
 
-  // Filtragem inteligente para a busca
+  const headerStatusLabel = useMemo(() => {
+    if (!activeStep) return 'Processando...'
+    if (activeStep === 'ALTA' || activeStep === 'INTERNACAO') return 'Finalizado'
+    return activeStep.toLowerCase().replace('_', ' ')
+  }, [activeStep])
+
+  // Sugestões da busca central: só quando há texto; ordena por viabilidade (ATD/nome que começa com o termo primeiro)
   const filteredPatients = useMemo(() => {
-    if (!searchTerm) return patients
-    const s = searchTerm.toLowerCase()
-    return patients.filter(p => 
-      String(p.PACIENTE).toLowerCase().includes(s) || 
-      String(p.NR_ATENDIMENTO).includes(s)
-    ).slice(0, 50)
+    const raw = searchTerm.trim()
+    if (!raw) return []
+    const q = raw.toLowerCase()
+    const matches = patients.filter(
+      (p) =>
+        String(p.PACIENTE).toLowerCase().includes(q) || String(p.NR_ATENDIMENTO).includes(raw)
+    )
+    return matches
+      .sort((a, b) => {
+        const an = String(a.PACIENTE).toLowerCase()
+        const bn = String(b.PACIENTE).toLowerCase()
+        const aAtd = String(a.NR_ATENDIMENTO)
+        const bAtd = String(b.NR_ATENDIMENTO)
+        const score = (name: string, atd: string) => {
+          let s = 0
+          if (atd.startsWith(raw)) s += 200
+          else if (atd.includes(raw)) s += 120
+          if (name.startsWith(q)) s += 100
+          else if (name.includes(q)) s += 50
+          return s
+        }
+        return score(bn, bAtd) - score(an, aAtd)
+      })
+      .slice(0, 50)
   }, [patients, searchTerm])
 
-  const handleSelectPatient = (patient: any) => {
+  const [unitRow1, unitRow2] = useMemo(() => {
+    if (!units.length) return [[], []] as [string[], string[]]
+    const mid = Math.ceil(units.length / 2)
+    return [units.slice(0, mid), units.slice(mid)]
+  }, [units])
+
+  const panelFilteredPatients = useMemo(() => {
+    if (!panelSearchTerm.trim()) return patients
+    const s = panelSearchTerm.toLowerCase().trim()
+    return patients.filter(
+      (p) =>
+        String(p.PACIENTE).toLowerCase().includes(s) || String(p.NR_ATENDIMENTO).includes(s)
+    )
+  }, [patients, panelSearchTerm])
+
+  const handleSelectPatient = (patient: PatientSummary) => {
     setIsSwitching(true)
     setSelectedPatient(patient)
     setSearchTerm('')
     setIsSearchFocused(false)
+    setPatientPanelOpen(false)
     setTimeout(() => setIsSwitching(false), 2000)
+  }
+
+  const selectUnit = (u: string) => {
+    setSelectedUnit(u)
+    setPatientPanelOpen(true)
   }
 
   // Removido sidebarContent para integração direta no layout principal
@@ -251,24 +297,47 @@ export default function App() {
         {/* Header / Floats - Navbar Unificada no Topo */}
         <header className="absolute top-6 left-6 right-6 z-[60] flex items-center justify-between gap-4 pointer-events-none">
            {/* Brand & Unidade */}
-           <div className="flex items-center gap-3 pointer-events-auto">
-              <div className="bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-2xl shadow-2xl flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-dash-live/20 flex items-center justify-center text-dash-live border border-dash-live/30">
+           <div className="flex items-center gap-3 pointer-events-auto min-w-0">
+              <div className="bg-black/60 backdrop-blur-md border border-white/10 p-3 rounded-2xl shadow-2xl flex items-start gap-3 min-w-0 max-w-[min(100%,52rem)]">
+                <div className="w-10 h-10 shrink-0 rounded-xl bg-dash-live/20 flex items-center justify-center text-dash-live border border-dash-live/30">
                   <HeartPulse size={24} />
                 </div>
-                <div>
-                   <h1 className="text-xs font-black tracking-widest text-white uppercase leading-none mb-1">Jornada do Paciente</h1>
-                   <div className="relative">
-                      <select
-                        value={selectedUnit}
-                        onChange={e => setSelectedUnit(e.target.value)}
-                        className="appearance-none bg-transparent border-none p-0 pr-4 text-[11px] font-bold text-dash-live uppercase tracking-widest focus:outline-none cursor-pointer"
+                <div className="shrink-0 pt-0.5">
+                   <h1 className="text-xs font-black tracking-widest text-white uppercase leading-none">Jornada do Paciente</h1>
+                </div>
+                <div className="min-w-0 flex flex-col gap-1.5 border-l border-white/10 pl-3 ml-0.5">
+                  <div className="flex flex-wrap gap-1.5">
+                    {unitRow1.map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => selectUnit(u)}
+                        className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide border transition ${
+                          selectedUnit === u
+                            ? 'border-dash-live/50 bg-dash-live/15 text-dash-live'
+                            : 'border-white/10 bg-white/5 text-app-muted hover:border-white/20 hover:text-white'
+                        }`}
                       >
-                        <option value="" className="bg-[#0B0E14]">Escolher Unidade</option>
-                        {units.map(u => <option key={u} value={u} className="bg-[#0B0E14] uppercase">{u}</option>)}
-                      </select>
-                      <ChevronDown size={10} className="absolute right-0 top-1 text-dash-live pointer-events-none" />
-                   </div>
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {unitRow2.map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => selectUnit(u)}
+                        className={`rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wide border transition ${
+                          selectedUnit === u
+                            ? 'border-dash-live/50 bg-dash-live/15 text-dash-live'
+                            : 'border-white/10 bg-white/5 text-app-muted hover:border-white/20 hover:text-white'
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
            </div>
@@ -300,56 +369,26 @@ export default function App() {
                    )}
                 </div>
 
-                {/* Dropdown de Busca */}
-                {isSearchFocused && (searchTerm.length > 0 || filteredPatients.length > 0) && (
+                {/* Dropdown: só após digitar — lista filtrada e ordenada como sugestões viáveis */}
+                {isSearchFocused && searchTerm.trim().length > 0 && (
                   <>
                     <div className="fixed inset-0 z-[100]" onClick={() => setIsSearchFocused(false)} />
                     <div className="absolute top-full left-0 right-0 mt-3 bg-[#0F1219]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.7)] z-[101] max-h-[400px] overflow-y-auto animate-in fade-in slide-in-from-top-4 duration-300 custom-scrollbar">
-                      {filteredPatients.length > 0 ? (
-                        filteredPatients.map((p: any) => (
-                          <div
+                      {!selectedUnit ? (
+                        <div className="p-10 text-center text-app-muted text-sm">
+                          Selecione uma unidade para buscar pacientes.
+                        </div>
+                      ) : filteredPatients.length > 0 ? (
+                        filteredPatients.map((p) => (
+                          <PatientQueueRow
                             key={p.NR_ATENDIMENTO}
-                            onClick={() => handleSelectPatient(p)}
-                            className="group flex flex-col p-4 border-b border-white/5 hover:bg-dash-live/10 cursor-pointer transition-all"
-                          >
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[10px] font-black text-dash-live tracking-widest font-mono">
-                                ATD #{p.NR_ATENDIMENTO}
-                              </span>
-                              <span className={`text-[9px] font-black px-2 py-0.5 rounded border border-white/10 ${
-                                (String(p.PRIORIDADE || '').includes('AMARELO') || String(p.PRIORIDADE || '').includes('URGENTE')) && 
-                                !String(p.PRIORIDADE || '').includes('POUCO') && 
-                                !String(p.PRIORIDADE || '').includes('NÃO') ? 'text-yellow-400 bg-yellow-400/10 border-yellow-400/20' : 
-                                (String(p.PRIORIDADE || '').includes('VERDE') || String(p.PRIORIDADE || '').includes('POUCO')) ? 'text-green-400 bg-green-400/10 border-green-400/20' :
-                                (String(p.PRIORIDADE || '').includes('LARANJA') || String(p.PRIORIDADE || '').includes('MUITO URGENTE')) ? 'text-orange-400 bg-orange-400/10 border-orange-400/20' :
-                                (String(p.PRIORIDADE || '').includes('VERMELHO') || String(p.PRIORIDADE || '').includes('EMERG')) ? 'text-red-400 bg-red-400/10 border-red-400/20' : 
-                                'text-blue-400 bg-blue-400/10 border-blue-400/20'
-                              }`}>
-                                {String(p.PRIORIDADE || '').toUpperCase().includes('NORMAL') ? 'NÃO URGENTE' : (p.PRIORIDADE || 'NÃO URGENTE')}
-                              </span>
-                            </div>
-                            <span className="text-base font-bold text-white group-hover:translate-x-2 transition-transform truncate">
-                              {p.PACIENTE}
-                            </span>
-                            <div className="flex items-center gap-3 mt-2">
-                              <span className="text-xs text-app-muted">{p.IDADE} • {p.SEXO}</span>
-                              <div className="ml-auto flex items-center gap-3">
-                                {p.DT_ALTA && p.DT_ALTA !== 'NULL' && (
-                                  <span className="text-[8px] font-black px-2 py-0.5 rounded bg-red-500 text-white animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.4)]">
-                                    ALTA
-                                  </span>
-                                )}
-                                <span className="text-xs text-yellow-400/70 flex items-center gap-1.5 font-mono">
-                                  <Clock size={12} />
-                                  {new Date(p.DT_ENTRADA).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
+                            patient={p}
+                            onSelect={(row) => handleSelectPatient(row as PatientSummary)}
+                          />
                         ))
                       ) : (
                         <div className="p-10 text-center text-app-muted text-sm italic">
-                          Busca sem resultados para "{searchTerm}"
+                          Nenhuma sugestão para &quot;{searchTerm.trim()}&quot;.
                         </div>
                       )}
                     </div>
@@ -363,7 +402,7 @@ export default function App() {
               {journey && (
                 <div className="bg-white/5 backdrop-blur-md border border-dash-live/30 px-5 py-2.5 rounded-2xl shadow-[0_0_20px_rgba(45,224,185,0.15)] text-right hidden lg:block">
                    <span className="text-[9px] text-dash-live uppercase tracking-[0.2em] font-black block mb-0.5">Status Atual</span>
-                   <span className="text-sm font-bold text-white uppercase">{activeStep?.toLowerCase().replace('_', ' ') || 'Processando...'}</span>
+                   <span className="text-sm font-bold text-white uppercase">{headerStatusLabel}</span>
                 </div>
               )}
 
@@ -393,9 +432,82 @@ export default function App() {
            </div>
         </header>
 
+        {/* Painel da fila à esquerda (unidade selecionada) — mapa / árvore permanecem à direita */}
+        {selectedUnit && (
+          <div
+            className={`pointer-events-auto fixed left-0 top-28 bottom-8 z-[55] flex flex-row items-stretch overflow-hidden rounded-r-2xl border border-white/15 border-l-0 bg-black/50 shadow-2xl backdrop-blur-md transition-[width] duration-300 ease-out ${
+              patientPanelOpen ? 'w-[min(22rem,calc(100vw-1.5rem))]' : 'w-11'
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() => setPatientPanelOpen((o) => !o)}
+              className="flex w-11 shrink-0 flex-col items-center justify-center gap-1 border-r border-white/10 bg-white/5 text-dash-live transition-colors hover:bg-dash-live/15"
+              aria-expanded={patientPanelOpen}
+              aria-controls="patient-queue-panel"
+              id="patient-queue-toggle"
+              title={patientPanelOpen ? 'Ocultar fila da unidade' : 'Ver fila da unidade (escolher paciente)'}
+            >
+              {patientPanelOpen ? <ChevronLeft size={20} strokeWidth={2.5} /> : <ChevronRight size={20} strokeWidth={2.5} />}
+            </button>
+            <div
+              id="patient-queue-panel"
+              role="region"
+              aria-label="Fila de pacientes da unidade selecionada"
+              aria-hidden={!patientPanelOpen}
+              className={`flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-[#0F1219]/90 backdrop-blur-xl transition-[opacity,max-width] duration-300 ${
+                patientPanelOpen ? 'max-w-none opacity-100' : 'max-w-0 opacity-0'
+              }`}
+            >
+              <div className="shrink-0 border-b border-white/10 px-3 py-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-dash-live">Fila no momento</p>
+                <p className="truncate text-[10px] font-bold text-white/90">{selectedUnit}</p>
+              </div>
+              <div className="shrink-0 border-b border-white/10 px-3 py-2">
+                <div className="relative flex items-center rounded-xl border border-white/10 bg-black/40 px-3 py-2 focus-within:border-dash-live/40">
+                  <Search size={14} className="mr-2 shrink-0 text-app-muted" />
+                  <input
+                    type="text"
+                    value={panelSearchTerm}
+                    onChange={(e) => setPanelSearchTerm(e.target.value)}
+                    placeholder="Filtrar por nome ou atendimento…"
+                    className="min-w-0 flex-1 bg-transparent text-xs text-white placeholder:text-app-muted focus:outline-none"
+                    aria-label="Filtrar fila da unidade"
+                  />
+                </div>
+              </div>
+              <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
+                {loadingPatients ? (
+                  <div className="flex items-center justify-center p-8 text-app-muted text-xs">Carregando…</div>
+                ) : patients.length === 0 ? (
+                  <div className="p-6 text-center text-app-muted text-xs">Nenhum paciente na fila.</div>
+                ) : panelFilteredPatients.length === 0 ? (
+                  <div className="p-6 text-center text-app-muted text-xs">
+                    Nenhum resultado para &quot;{panelSearchTerm}&quot;.
+                  </div>
+                ) : (
+                  panelFilteredPatients.map((p) => (
+                    <PatientQueueRow
+                      key={p.NR_ATENDIMENTO}
+                      patient={p}
+                      onSelect={(row) => handleSelectPatient(row as PatientSummary)}
+                    />
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* HUD Flutuante de Jornada (Apenas quando selecionado) */}
         {selectedPatient && (
-          <aside className="absolute top-28 left-6 bottom-6 w-64 z-50 flex flex-col pointer-events-none animate-in fade-in slide-in-from-left-6 duration-700">
+          <aside
+            className={`absolute top-28 bottom-6 w-64 z-[52] flex flex-col pointer-events-none animate-in fade-in slide-in-from-left-6 duration-700 ${
+              patientPanelOpen && selectedUnit
+                ? 'left-[calc(min(22rem,100vw-1.5rem)+0.75rem)]'
+                : 'left-6'
+            }`}
+          >
              {/* Card do Paciente */}
              <div className="pointer-events-auto bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden flex flex-col h-full shadow-[0_30px_60px_rgba(0,0,0,0.5)]">
                
@@ -491,7 +603,7 @@ export default function App() {
                Nenhum Paciente Selecionado
             </h2>
             <p className="text-app-muted text-base max-w-lg leading-relaxed px-6">
-               Utilize a central de busca no topo para localizar um atendimento e desenhar o percurso clínico em tempo real.
+               Escolha uma unidade nos botões ao lado do título: a fila abre à esquerda (pode recolher pelo botão na borda). Use o filtro acima da lista ou a busca no topo para localizar um atendimento e ver a jornada em tempo real.
             </p>
           </div>
         ) : (
@@ -517,12 +629,12 @@ export default function App() {
 
                 <div className="flex flex-col items-center gap-4">
                   <h2 className="text-white text-3xl font-black tracking-[0.4em] drop-shadow-2xl uppercase">
-                    {isSwitching ? "Sintonizando Fluxo" : "Carregando Dados"}
+                    {isSwitching ? 'Buscando novos dados' : 'Carregando Dados'}
                   </h2>
                   <div className="flex items-center gap-4 bg-white/5 border border-white/10 px-6 py-3 rounded-2xl backdrop-blur-xl">
                     <div className="w-2 h-2 rounded-full bg-dash-live animate-ping" />
                     <span className="text-dash-live font-mono text-sm tracking-[0.2em] uppercase font-bold">
-                       {syncStatus}
+                       {isSwitching ? 'Aguarde um instante...' : syncStatus}
                     </span>
                   </div>
                 </div>
@@ -551,15 +663,6 @@ export default function App() {
           />
         )}
       </main>
-    </div>
-  )
-}
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[10px] text-app-muted font-semibold uppercase tracking-tighter">{label}</p>
-      <p className="font-bold text-white text-xs">{value}</p>
     </div>
   )
 }

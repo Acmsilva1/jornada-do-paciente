@@ -46,7 +46,7 @@ function Foot({
 }
 
 export default function FootprintEdge({
-  id,
+  id: _edgeId,
   sourceX, sourceY,
   targetX, targetY,
   sourcePosition,

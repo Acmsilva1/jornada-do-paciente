@@ -3,16 +3,10 @@ import ReactFlow, { Background, Edge, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
 import SectorBackgroundNode from './SectorBackgroundNode'
 import PatientWalkingNode from './PatientWalkingNode'
-import FootprintEdge from './FootprintEdge'
-import { Beaker, Camera, Building2, Activity, Stethoscope, Pill, HeartPulse } from 'lucide-react'
 
 const nodeTypes = {
   sector: SectorBackgroundNode,
   patient: PatientWalkingNode
-}
-
-const edgeTypes = {
-  footprint: FootprintEdge
 }
 
 type StepInfo = { step: string; label: string; time: string | null; minutes: number | null; type: string }
