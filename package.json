@@ -1,0 +1,20 @@
+{
+  "name": "jornada-do-paciente",
+  "private": true,
+  "workspaces": [
+    "web",
+    "api"
+  ],
+  "scripts": {
+    "dev": "concurrently -c auto -n web,api \"npm run dev:web\" \"npm run dev:api\"",
+    "dev:web": "npm run dev -w web",
+    "dev:api": "npm run dev -w api",
+    "build": "npm run build -w web",
+    "test": "npm run test -w api",
+    "lint": "npm run lint -w web",
+    "check": "npm run lint && npm run test && npm run typecheck -w api && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
