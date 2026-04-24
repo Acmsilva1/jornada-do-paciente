@@ -3,14 +3,39 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import fs from 'fs';
 import path from 'path';
-import { parse } from 'csv-parse';
+import duckdb from 'duckdb';
 
 const fastify = Fastify({ logger: true });
 
 fastify.register(cors);
 fastify.register(websocket);
 
-const DADOS_DIR = path.resolve('../dados');
+/** Pasta com `.parquet` (padrão: `banco local/` na raiz do repo). Sobrescreva com `JORNADA_DADOS_DIR`. */
+const DADOS_DIR = process.env.JORNADA_DADOS_DIR
+  ? path.resolve(process.env.JORNADA_DADOS_DIR)
+  : path.join(__dirname, '..', 'banco local');
+
+const duckDb = new duckdb.Database(':memory:');
+const duckConn = duckDb.connect();
+
+const quotePathForReadParquet = (absPath: string) => {
+  const normalized = path.resolve(absPath).replace(/\\/g, '/');
+  return `'${normalized.replace(/'/g, "''")}'`;
+};
+
+/** DuckDB pode devolver `bigint`; JSON do Fastify não serializa BigInt. */
+const rowFromDuck = (row: Record<string, unknown>) => {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (typeof v === 'bigint') {
+      const n = Number(v);
+      out[k] = Number.isSafeInteger(n) ? n : v.toString();
+    } else {
+      out[k] = v;
+    }
+  }
+  return out;
+};
 
 // Estruturas de dados em RAM
 let globalAttendances: any[] = [];
@@ -21,39 +46,38 @@ let imagingData = new Map<string, any[]>(); // RX, ECG, TC, US
 let revalData = new Map<string, any[]>();
 let metas: any[] = [];
 
-const loadCSV = (filename: string): Promise<any[]> => {
+const loadParquet = (filename: string): Promise<any[]> => {
   return new Promise((resolve, reject) => {
-    const results: any[] = [];
     const filePath = path.join(DADOS_DIR, filename);
     if (!fs.existsSync(filePath)) {
       fastify.log.warn(`Arquivo não encontrado: ${filename}`);
       return resolve([]);
     }
-    fs.createReadStream(filePath)
-      .pipe(parse({ columns: true, skip_empty_lines: true, cast: false }))
-      .on('data', (row) => results.push(row))
-      .on('error', reject)
-      .on('end', () => resolve(results));
+    const sql = `SELECT * FROM read_parquet(${quotePathForReadParquet(filePath)})`;
+    duckConn.all(sql, (err, rows) => {
+      if (err) reject(err);
+      else resolve(((rows as Record<string, unknown>[]) || []).map(rowFromDuck));
+    });
   });
 };
 
 const start = async () => {
   try {
-    fastify.log.info('Iniciando carga de dados massiva...');
+    fastify.log.info(`Iniciando carga de dados (Parquet / DuckDB) em: ${DADOS_DIR}`);
     
     // 1. Carga do Principal
-    globalAttendances = await loadCSV('tbl_tempos_entrada_consulta_saida.csv');
+    globalAttendances = await loadParquet('tbl_tempos_entrada_consulta_saida.parquet');
     fastify.log.info(`${globalAttendances.length} atendimentos principais carregados.`);
 
     // 2. Carga dos auxiliares
-    const labs = await loadCSV('tbl_tempos_laboratorio.csv');
+    const labs = await loadParquet('tbl_tempos_laboratorio.parquet');
     labs.forEach(l => {
       const list = labData.get(String(l.NR_ATENDIMENTO)) || [];
       list.push(l);
       labData.set(String(l.NR_ATENDIMENTO), list);
     });
 
-    const meds = await loadCSV('tbl_tempos_medicacao.csv');
+    const meds = await loadParquet('tbl_tempos_medicacao.parquet');
     meds.forEach(m => {
       const list = medData.get(String(m.NR_ATENDIMENTO)) || [];
       list.push(m);
@@ -61,7 +85,7 @@ const start = async () => {
     });
 
     fastify.log.info('Lendo Vias de Medicamentos (76MB)... isso pode levar uns segundos');
-    const vias = await loadCSV('tbl_vias_medicamentos.csv');
+    const vias = await loadParquet('tbl_vias_medicamentos.parquet');
     vias.forEach(v => {
       if (v.DS_MATERIAL) {
         const list = viasData.get(String(v.NR_ATENDIMENTO)) || [];
@@ -72,22 +96,22 @@ const start = async () => {
       }
     });
 
-    const rx = await loadCSV('tbl_tempos_rx_e_ecg.csv');
-    const tc = await loadCSV('tbl_tempos_tc_e_us.csv');
+    const rx = await loadParquet('tbl_tempos_rx_e_ecg.parquet');
+    const tc = await loadParquet('tbl_tempos_tc_e_us.parquet');
     [...rx, ...tc].forEach(i => {
       const list = imagingData.get(String(i.NR_ATENDIMENTO)) || [];
       list.push(i);
       imagingData.set(String(i.NR_ATENDIMENTO), list);
     });
 
-    const revals = await loadCSV('tbl_tempos_reavaliacao.csv');
+    const revals = await loadParquet('tbl_tempos_reavaliacao.parquet');
     revals.forEach(r => {
       const list = revalData.get(String(r.NR_ATENDIMENTO)) || [];
       list.push(r);
       revalData.set(String(r.NR_ATENDIMENTO), list);
     });
 
-    metas = await loadCSV('meta_tempos.csv');
+    metas = await loadParquet('meta_tempos.parquet');
     fastify.log.info(`${metas.length} metas de tempo carregadas.`);
 
     fastify.log.info('Carga de dados concluída.');
