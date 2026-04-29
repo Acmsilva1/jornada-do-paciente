@@ -4,18 +4,14 @@ import websocket from '@fastify/websocket';
 import fs from 'fs';
 import path from 'path';
 import duckdb from 'duckdb';
+import { getApiPort, getDadosDir } from '../../core/paths';
 
 const fastify = Fastify({ logger: true });
 
 fastify.register(cors);
 fastify.register(websocket);
 
-/** Raiz do repositório (4 níveis acima de `api/src/features/jornada/`). */
-const REPO_ROOT = path.join(__dirname, '..', '..', '..', '..');
-/** Parquet em `data/local/`. Sobrescreva com `JORNADA_DADOS_DIR`. */
-const DADOS_DIR = process.env.JORNADA_DADOS_DIR
-  ? path.resolve(process.env.JORNADA_DADOS_DIR)
-  : path.join(REPO_ROOT, 'data', 'local');
+const DADOS_DIR = getDadosDir();
 
 const duckDb = new duckdb.Database(':memory:');
 const duckConn = duckDb.connect();
@@ -171,7 +167,7 @@ export const start = async () => {
     globalAttendances = await loadParquet('tbl_tempos_entrada_consulta_saida.parquet');
     fastify.log.info(`${globalAttendances.length} atendimentos na tabela principal.`);
 
-    const port = Number(process.env.JORNADA_API_PORT || process.env.PORT || 3001);
+    const port = getApiPort();
     await fastify.listen({ port, host: '0.0.0.0' });
     fastify.log.info(`HTTP na porta ${port} — /api/units e /api/patients já podem responder; auxiliar em segundo plano.`);
 

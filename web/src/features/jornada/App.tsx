@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
-import { API_BASE } from './apiBase'
+import { API_BASE } from '../../shared/lib/apiBase'
 import MapFlow from './components/MapFlow'
 import StepDetailModal from './components/StepDetailModal'
 import { PatientQueueRow } from './components/PatientQueueRow'

@@ -10,6 +10,7 @@ Dashboard em tempo real para visualizar a jornada do atendimento na Pronto-Socor
 | [docs/PASTAS_LEGACY.md](docs/PASTAS_LEGACY.md) | Histórico: pastas `frontend/` e `backend/` removidas; checklist de remoção segura |
 | [doc/doc.md](doc/doc.md) | Arquitetura, API, web, fluxos de UX e build |
 | [agentes.md](agentes.md) | Regras de negócio, SLA e decisões para manutenção assistida por IA |
+| [agents.md](agents.md) | Arquitetura `web/src/features` + `api/src/features` / `core`, comandos e **Checkpoint** para Cursor |
 
 ## Requisitos
 
@@ -32,7 +33,7 @@ Na **raiz** do repositório (uma vez: `npm install`).
    npm run dev:api
    ```
 
-3. **Só Web** (porta `5173`, `VITE_API_URL` opcional):
+3. **Só Web** (porta **`5176`** `strictPort`, `VITE_API_URL` opcional):
 
    ```bash
    npm run dev:web
